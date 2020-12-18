@@ -277,6 +277,7 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 			//		log.Println("close failed", err)
 			//	}
 			case <-control:
+				log.Println("Control closed")
 				return
 			case pck := <-ch:
 				//timer1.Reset(2 * time.Second)
@@ -300,12 +301,14 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 					samples := uint32(90000 / 1000 * Vts.Milliseconds())
 					err := videoTrack.WriteSample(media.Sample{Data: pck.Data, Samples: samples})
 					if err != nil {
+						log.Println("Failed to write video sample", err)
 						return
 					}
 					Vpre = pck.Time
 				} else if pck.Idx == 1 && audioTrack != nil {
 					err := audioTrack.WriteSample(media.Sample{Data: pck.Data, Samples: uint32(len(pck.Data))})
 					if err != nil {
+						log.Println("Failed to weite audio sample", err)
 						return
 					}
 				}
