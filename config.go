@@ -6,37 +6,36 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"sync"
 
 	"github.com/deepch/vdk/av"
 )
 
-//Config global
-var Config = loadConfig()
+var config = loadConfig()
 
-//ConfigST struct
-type ConfigST struct {
-	Server  ServerST            `json:"server"`
-	Streams map[string]StreamST `json:"streams"`
+type Config struct {
+	sync.RWMutex
+	Server  ServerSettings            `json:"server"`
+	Streams map[string]StreamSettings `json:"streams"`
 }
 
-//ServerST struct
-type ServerST struct {
+type ServerSettings struct {
 	HTTPPort string `json:"http_port"`
 }
 
-//StreamST struct
-type StreamST struct {
-	URL    string `json:"url"`
-	Status bool   `json:"status"`
-	Codecs []av.CodecData
-	Cl     map[string]viwer
+type StreamSettings struct {
+	URL     string `json:"url"`
+	Status  bool   `json:"status"`
+	Codecs  []av.CodecData
+	clients map[string]viewer
 }
-type viwer struct {
+
+type viewer struct {
 	c chan av.Packet
 }
 
-func loadConfig() *ConfigST {
-	var tmp ConfigST
+func loadConfig() *Config {
+	var tmp Config
 	data, err := ioutil.ReadFile("config.json")
 	if err != nil {
 		log.Fatalln(err)
@@ -46,55 +45,69 @@ func loadConfig() *ConfigST {
 		log.Fatalln(err)
 	}
 	for i, v := range tmp.Streams {
-		v.Cl = make(map[string]viwer)
+		v.clients = make(map[string]viewer)
 		tmp.Streams[i] = v
 	}
 	return &tmp
 }
 
-func (element *ConfigST) cast(uuid string, pck av.Packet) {
-	for _, v := range element.Streams[uuid].Cl {
+func (c *Config) cast(uuid string, pck av.Packet) {
+	c.RLock()
+	defer c.RUnlock()
+
+	for _, v := range c.Streams[uuid].clients {
 		if len(v.c) < cap(v.c) {
 			v.c <- pck
 		}
 	}
 }
 
-func (element *ConfigST) ext(suuid string) bool {
-	_, ok := element.Streams[suuid]
+func (c *Config) exists(suuid string) bool {
+	c.RLock()
+	defer c.RUnlock()
+	_, ok := c.Streams[suuid]
 	return ok
 }
 
-func (element *ConfigST) coAd(suuid string, codecs []av.CodecData) {
-	t := element.Streams[suuid]
+func (c *Config) setCodec(suuid string, codecs []av.CodecData) {
+	c.Lock()
+	defer c.Unlock()
+
+	t := c.Streams[suuid]
 	t.Codecs = codecs
-	element.Streams[suuid] = t
+	c.Streams[suuid] = t
 }
 
-func (element *ConfigST) coGe(suuid string) []av.CodecData {
-	return element.Streams[suuid].Codecs
-}
+func (c *Config) connect(suuid string) (string, chan av.Packet) {
+	c.Lock()
+	defer c.Unlock()
 
-func (element *ConfigST) clAd(suuid string) (string, chan av.Packet) {
 	cuuid := pseudoUUID()
 	ch := make(chan av.Packet, 100)
-	element.Streams[suuid].Cl[cuuid] = viwer{c: ch}
+	c.Streams[suuid].clients[cuuid] = viewer{c: ch}
 	return cuuid, ch
 }
 
-func (element *ConfigST) list() (string, []string) {
+func (c *Config) list() (string, []string) {
+	c.RLock()
+	defer c.RUnlock()
+
 	var res []string
-	var fist string
-	for k := range element.Streams {
-		if fist == "" {
-			fist = k
+	var first string
+	for k := range c.Streams {
+		if first == "" {
+			first = k
 		}
 		res = append(res, k)
 	}
-	return fist, res
+	return first, res
 }
-func (element *ConfigST) clDe(suuid, cuuid string) {
-	delete(element.Streams[suuid].Cl, cuuid)
+
+func (c *Config) disconnect(suuid, cuuid string) {
+	c.Lock()
+	defer c.Unlock()
+
+	delete(c.Streams[suuid].clients, cuuid)
 }
 
 func pseudoUUID() (uuid string) {

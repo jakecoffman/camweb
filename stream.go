@@ -8,45 +8,47 @@ import (
 )
 
 func serveStreams() {
-	for k, v := range Config.Streams {
-		go func(name, url string) {
-			for {
-				log.Println(name, "connect", url)
-				rtsp.DebugRtsp = true
-				session, err := rtsp.Dial(url)
-				if err != nil {
-					log.Println(name, err)
-					time.Sleep(5 * time.Second)
-					continue
-				}
-				session.RtpKeepAliveTimeout = 10 * time.Second
-				if err != nil {
-					log.Println(name, err)
-					time.Sleep(5 * time.Second)
-					continue
-				}
-				codec, err := session.Streams()
-				if err != nil {
-					log.Println(name, err)
-					time.Sleep(5 * time.Second)
-					continue
-				}
-				Config.coAd(name, codec)
-				for {
-					pkt, err := session.ReadPacket()
-					if err != nil {
-						log.Println(name, err)
-						break
-					}
-					Config.cast(name, pkt)
-				}
-				err = session.Close()
-				if err != nil {
-					log.Println("session Close error", err)
-				}
-				log.Println(name, "reconnect wait 5s")
-				time.Sleep(5 * time.Second)
+	for k, v := range config.Streams {
+		go stream(k, v.URL)
+	}
+}
+
+// stream connects to the camera and starts sending it to any connected clients
+func stream(name, url string) {
+	for {
+		//rtsp.DebugRtsp = true
+		session, err := rtsp.Dial(url)
+		if err != nil {
+			log.Println(name, err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		session.RtpKeepAliveTimeout = 10 * time.Second
+		if err != nil {
+			log.Println(name, err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		codec, err := session.Streams()
+		if err != nil {
+			log.Println(name, err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		config.setCodec(name, codec)
+		for {
+			pkt, err := session.ReadPacket()
+			if err != nil {
+				log.Println(name, err)
+				break
 			}
-		}(k, v.URL)
+			config.cast(name, pkt)
+		}
+		err = session.Close()
+		if err != nil {
+			log.Println("session Close error", err)
+		}
+		log.Println(name, "reconnect wait 5s")
+		time.Sleep(5 * time.Second)
 	}
 }

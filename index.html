@@ -1,0 +1,216 @@
+<html lang="en">
+<head>
+  <title>Home</title>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+  <style>
+      html, body {
+          margin: 0;
+          background: black;
+          color: white;
+      }
+
+      section {
+          display: flex;
+          flex-direction: column;
+          height: 50vh;
+      }
+
+      video {
+          height: 100%;
+          width: auto;
+      }
+
+      .controls {
+          position: absolute;
+          z-index: 100;
+      }
+
+      button {
+          background: white;
+          padding-left: 1rem;
+          padding-right: 1rem;
+          border: none;
+      }
+  </style>
+</head>
+<body>
+<article id="app">
+  <section>
+    <audio :src-object.prop.camel="audioObject1"
+           :autoplay="true"
+           ref="audio1"
+    ></audio>
+    <video :src-object.prop.camel="videoObject1"
+           :autoplay="true"
+           :muted="true"
+           :controls="false">
+    </video>
+    <div class="controls">
+      <button @mousedown="control('demo1', 'start', 'Left')"
+              @mouseup="control('demo1', 'stop', 'Left')">
+        ⬅️
+      </button>
+      <button @mousedown="control('demo1', 'start', 'Right')"
+              @mouseup="control('demo1', 'stop', 'Right')">
+        ➡️
+      </button>
+      <button @mousedown="control('demo1', 'start', 'Up')"
+              @mouseup="control('demo1', 'stop', 'Up')">
+        ⬆️
+      </button>
+      <button @mousedown="control('demo1', 'start', 'Down')"
+              @mouseup="control('demo1', 'stop', 'Down')">
+        ⬇️
+      </button>
+    </div>
+  </section>
+  <section>
+    <audio :src-object.prop.camel="audioObject2" :autoplay="true" ref="audio2"></audio>
+    <video
+            :src-object.prop.camel="videoObject2"
+            :autoplay="true"
+            :muted="true"
+            :controls="false">
+    </video>
+    <div class="controls">
+      <button @mousedown="control('demo2', 'start', 'Left')"
+              @mouseup="control('demo2', 'stop', 'Left')">
+        ⬅️
+      </button>
+      <button @mousedown="control('demo2', 'start', 'Right')"
+              @mouseup="control('demo2', 'stop', 'Right')">
+        ➡️
+      </button>
+      <button @mousedown="control('demo2', 'start', 'Up')"
+              @mouseup="control('demo2', 'stop', 'Up')">
+        ⬆️
+      </button>
+      <button @mousedown="control('demo2', 'start', 'Down')"
+              @mouseup="control('demo2', 'stop', 'Down')">
+        ⬇️
+      </button>
+    </div>
+  </section>
+</article>
+<script>
+  const app = new Vue({
+    el: '#app',
+    data: {
+      audioObject1: null,
+      audioObject2: null,
+      videoObject1: null,
+      videoObject2: null,
+      pc1: null,
+      pc2: null
+    },
+    mounted() {
+      // creates peer connection and sets callbacks
+      const pc = this.setupConnection('demo1', event => {
+        console.log(event.streams.length + ' track is delivered')
+        if (event.track.kind === 'video') {
+          this.videoObject1 = event.streams[0]
+        } else if (event.track.kind === 'audio') {
+          this.audioObject1 = event.streams[0]
+        }
+      })
+      // fetch the info about the stream from the server, setting up the tracks
+      this.getCodecInfo('demo1', pc)
+      this.$refs.audio1.volume = 1
+      this.pc1 = pc
+
+      // const pc2 = this.setupConnection('demo2', event => {
+      //   console.log(event.streams.length + ' track is delivered')
+      //   if (event.track.kind === 'video') {
+      //     this.videoObject2 = event.streams[0]
+      //   } else if (event.track.kind === 'audio') {
+      //     this.audioObject2 = event.streams[0]
+      //   }
+      // })
+      // this.getCodecInfo('demo2', pc2)
+      // this.$refs.audio2.volume = 1
+      // this.pc2 = pc2
+    },
+    methods: {
+      async control(id, cmd, dir) {
+        const r = await fetch(`control/${id}`, {
+          method: 'POST',
+          body: JSON.stringify({
+            cmd,
+            dir
+          }),
+          headers: {'Content-Type': 'application/json'}
+        })
+        if (!r.ok) {
+          alert(await r.json())
+        }
+      },
+      setupConnection(id, cb) {
+        console.log("Setup connection")
+        const pc = new RTCPeerConnection({
+          iceServers: [{
+            urls: ["stun:stun.l.google.com:19302"]
+          }]
+        });
+        pc.onnegotiationneeded = async () => {
+          console.log('negotiationneeded')
+          let offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          await this.getRemoteSdp(id, pc);
+        };
+        pc.ontrack = cb
+        pc.onconnectionstatechange = e => console.log('connectionstatechange', pc.connectionState)
+        pc.oniceconnectionstatechange = e => console.log('iceconnectionstatechange', pc.iceConnectionState)
+        pc.onicegatheringstatechange = e => console.log('icegatheringstatechange', pc.iceGatheringState)
+        pc.onicecandidate = e => console.log('icecandidate', e.candidate ? e.candidate.candidate : null)
+        pc.onicecandidateerror = e => console.log('icecandidateerror', e)
+        pc.onsignalingstatechange = e => console.log('signalingstatechange', e)
+        return pc
+      },
+      async getCodecInfo(id, pc) {
+        console.log('get codec info')
+        const r = await fetch(`codec/${id}`)
+        const data = await r.json()
+        if (data.length > 1) {
+          console.log('add audio Transceiver')
+          pc.addTransceiver('audio', {
+            direction: 'sendrecv'
+          })
+        }
+        console.log('add video Transceiver')
+        pc.addTransceiver('video', {
+          direction: 'sendrecv'
+        });
+        //send ping becouse PION not handle RTCSessionDescription.close()
+        // const sendChannel = pc.createDataChannel('foo');
+        // sendChannel.onclose = () => console.log('sendChannel has closed');
+        // sendChannel.onopen = () => {
+          // console.log('sendChannel has opened');
+          // sendChannel.send('ping');
+          // setInterval(() => {
+          //   console.log('ping sent')
+          //   sendChannel.send('ping');
+          // }, 1000)
+        // }
+        // sendChannel.onmessage = e => log(`Message from DataChannel '${sendChannel.label}' payload '${e.data}'`);
+      },
+      async getRemoteSdp(id, pc) {
+        console.log('getRemoteSdp', id)
+        const r = await fetch('receive', {
+          method: 'POST',
+          body: JSON.stringify({
+            suuid: id,
+            data: btoa(pc.localDescription.sdp)
+          }),
+          headers: {'Content-Type': 'application/json'}
+        })
+        const data = await r.text()
+        await pc.setRemoteDescription(new RTCSessionDescription({
+          type: 'answer',
+          sdp: atob(data)
+        }))
+      }
+    }
+  })
+</script>
+</body>
+</html>
