@@ -156,6 +156,13 @@
           let offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
           await this.getRemoteSdp(id, pc);
+
+          const iceTransport = pc.getSenders()[0].transport.iceTransport
+
+          iceTransport.onselectedcandidatepairchange = function(event) {
+            const pair = iceTransport.getSelectedCandidatePair()
+            console.log('selectedcandidatepairchange -- local:', pair.local.type, pair.local.protocol, pair.local.port, 'remote:', pair.remote.type, pair.remote.protocol, pair.remote.port)
+          }
         };
         pc.ontrack = cb
         pc.onconnectionstatechange = e => console.log('connectionstatechange', pc.connectionState)
