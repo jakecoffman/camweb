@@ -1,4 +1,4 @@
-# RTSPtoWebRTC
+# camweb
 
 This is a fork of https://github.com/deepch/RTSPtoWebRTC
 
