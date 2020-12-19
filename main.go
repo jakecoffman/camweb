@@ -8,9 +8,6 @@ import (
 )
 
 func main() {
-	// hmm gomaxprocs 1 causes it to fail
-	//runtime.GOMAXPROCS(1)
-
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 	go serveHTTP()
 	go serveStreams()

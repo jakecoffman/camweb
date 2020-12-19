@@ -1,4 +1,4 @@
-module github.com/deepch/RTSPtoWebRTC
+module github.com/jakecoffman/camweb
 
 go 1.14
 

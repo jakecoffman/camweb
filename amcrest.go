@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	dac "github.com/xinsnake/go-http-digest-auth-client"
 	"io/ioutil"
@@ -14,7 +13,7 @@ import (
 var cache = map[string]dac.DigestRequest{}
 var controlLock sync.Mutex
 
-func control(ctx context.Context, uri, cmd, arg string) error {
+func control(uri, cmd, arg string) error {
 	controlLock.Lock()
 	defer controlLock.Unlock()
 

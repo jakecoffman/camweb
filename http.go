@@ -38,7 +38,7 @@ func serveHTTP() {
 		}
 		if streams, ok := config.Streams[c.Param("id")]; ok {
 			url := streams.URL
-			if err := control(c, url, cmd.Cmd, cmd.Dir); err != nil {
+			if err := control(url, cmd.Cmd, cmd.Dir); err != nil {
 				c.AbortWithStatusJSON(500, err.Error())
 				return
 			}
