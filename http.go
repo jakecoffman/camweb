@@ -6,11 +6,9 @@ import (
 	"github.com/deepch/vdk/av"
 	"github.com/deepch/vdk/codec/h264parser"
 	"github.com/gin-gonic/gin"
-	"github.com/pion/webrtc/v2"
-	"github.com/pion/webrtc/v2/pkg/media"
+	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v3/pkg/media"
 	"log"
-	"math/rand"
-	"strings"
 	"sync"
 	"time"
 )
@@ -81,34 +79,12 @@ func receiver(c *gin.Context) {
 		return
 	}
 
-	mediaEngine := webrtc.MediaEngine{}
-	offer := webrtc.SessionDescription{
-		Type: webrtc.SDPTypeOffer,
-		SDP:  string(sd),
-	}
-	err = mediaEngine.PopulateFromSDP(offer)
-	if err != nil {
-		log.Println("PopulateFromSDP error", err)
+	mediaEngine := &webrtc.MediaEngine{}
+	if err = mediaEngine.RegisterDefaultCodecs(); err != nil {
+		log.Println("RegisterDefaultCodecs error", err)
 		c.AbortWithStatusJSON(500, "media engine error")
 		return
 	}
-
-	var payloadType uint8
-	for _, videoCodec := range mediaEngine.GetCodecsByKind(webrtc.RTPCodecTypeVideo) {
-		if videoCodec.Name == "H264" && strings.Contains(videoCodec.SDPFmtpLine, "packetization-mode=1") {
-			payloadType = videoCodec.PayloadType
-			break
-		}
-	}
-	if payloadType == 0 {
-		log.Println("Remote peer does not support H264")
-		c.AbortWithStatusJSON(500, "remote peer does not support h264")
-		return
-	}
-	if payloadType != 126 {
-		log.Println("Video might not work with codec", payloadType)
-	}
-	log.Println("Work payloadType", payloadType)
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine))
 
 	peerConnection, err := api.NewPeerConnection(webrtc.Configuration{
@@ -154,14 +130,14 @@ func receiver(c *gin.Context) {
 	})
 
 	// ADD Video Track
-	videoTrack, err := peerConnection.NewTrack(payloadType, rand.Uint32(), "video", suuid+"_pion")
+	videoTrack, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", suuid+"_pion")
 	if err != nil {
 		log.Println("Failed to create video track", err)
 		c.AbortWithStatusJSON(500, "peer error")
 		return
 	}
 	_, err = peerConnection.AddTransceiverFromTrack(videoTrack,
-		webrtc.RtpTransceiverInit{
+		webrtc.RTPTransceiverInit{
 			Direction: webrtc.RTPTransceiverDirectionSendonly,
 		},
 	)
@@ -178,14 +154,14 @@ func receiver(c *gin.Context) {
 	}
 
 	// audio
-	var audioTrack *webrtc.Track
+	var audioTrack *webrtc.TrackLocalStaticSample
 	codecs := settings.Codecs
 	if len(codecs) > 1 && (codecs[1].Type() == av.PCM_ALAW || codecs[1].Type() == av.PCM_MULAW) {
 		switch codecs[1].Type() {
 		case av.PCM_ALAW:
-			audioTrack, err = peerConnection.NewTrack(webrtc.DefaultPayloadTypePCMA, rand.Uint32(), "audio", suuid+"audio")
+			audioTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMA}, "audio", suuid+"audio")
 		case av.PCM_MULAW:
-			audioTrack, err = peerConnection.NewTrack(webrtc.DefaultPayloadTypePCMU, rand.Uint32(), "audio", suuid+"audio")
+			audioTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMU}, "audio", suuid+"audio")
 		}
 		if err != nil {
 			log.Println(err)
@@ -193,7 +169,7 @@ func receiver(c *gin.Context) {
 			return
 		}
 		_, err = peerConnection.AddTransceiverFromTrack(audioTrack,
-			webrtc.RtpTransceiverInit{
+			webrtc.RTPTransceiverInit{
 				Direction: webrtc.RTPTransceiverDirectionSendonly,
 			},
 		)
@@ -209,6 +185,14 @@ func receiver(c *gin.Context) {
 			return
 		}
 	}
+
+	// Create channel that is blocked until ICE Gathering is complete
+	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
+
+	offer := webrtc.SessionDescription{
+		Type: webrtc.SDPTypeOffer,
+		SDP:  string(sd),
+	}
 	if err := peerConnection.SetRemoteDescription(offer); err != nil {
 		log.Println("SetRemoteDescription error", err, offer.SDP)
 		c.AbortWithStatusJSON(500, "peer error")
@@ -220,14 +204,17 @@ func receiver(c *gin.Context) {
 		c.AbortWithStatusJSON(500, "peer error")
 		return
 	}
+
 	if err = peerConnection.SetLocalDescription(answer); err != nil {
 		log.Println("SetLocalDescription error", err)
 		c.AbortWithStatusJSON(500, "peer error")
 		return
 	}
+
+	<-gatherComplete
 	peerConnection.OnICEConnectionStateChange(OnICEConnectionStateChange(peerConnection, suuid, videoTrack, audioTrack))
 
-	_, err = c.Writer.Write([]byte(base64.StdEncoding.EncodeToString([]byte(answer.SDP))))
+	_, err = c.Writer.Write([]byte(base64.StdEncoding.EncodeToString([]byte(peerConnection.LocalDescription().SDP))))
 	if err != nil {
 		log.Println("Writer SDP error", err)
 		c.AbortWithStatusJSON(500, "peer error")
@@ -235,7 +222,7 @@ func receiver(c *gin.Context) {
 	}
 }
 
-func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack, audioTrack *webrtc.Track) func(state webrtc.ICEConnectionState) {
+func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack, audioTrack *webrtc.TrackLocalStaticSample) func(state webrtc.ICEConnectionState) {
 	control := make(chan bool, 10)
 	settings, ok := config.Streams[id]
 	if !ok {
@@ -293,20 +280,15 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 				} else {
 					pck.Data = pck.Data[4:]
 				}
-				var Vts time.Duration
 				if pck.Idx == 0 && videoTrack != nil {
-					if Vpre != 0 {
-						Vts = pck.Time - Vpre
-					}
-					samples := uint32(90000 / 1000 * Vts.Milliseconds())
-					err := videoTrack.WriteSample(media.Sample{Data: pck.Data, Samples: samples})
+					err := videoTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time - Vpre}) //Samples: samples})
 					if err != nil {
 						log.Println("Failed to write video sample", err)
 						return
 					}
 					Vpre = pck.Time
 				} else if pck.Idx == 1 && audioTrack != nil {
-					err := audioTrack.WriteSample(media.Sample{Data: pck.Data, Samples: uint32(len(pck.Data))})
+					err := audioTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time - Vpre}) //Samples: uint32(len(pck.Data))})
 					if err != nil {
 						log.Println("Failed to weite audio sample", err)
 						return
