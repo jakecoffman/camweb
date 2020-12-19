@@ -10,6 +10,7 @@ import (
 	"github.com/pion/webrtc/v3/pkg/media"
 	"log"
 	"sync"
+	"time"
 )
 
 func serveHTTP() {
@@ -221,6 +222,7 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 			defer config.disconnect(id, cuuid)
 		}()
 		var start bool
+		var vpre, apre time.Duration
 		for {
 			select {
 			case <-control:
@@ -240,17 +242,21 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 					pck.Data = pck.Data[4:]
 				}
 				if pck.Idx == 0 && videoTrack != nil {
-					err := videoTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time})
+					err := videoTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time - vpre})
 					if err != nil {
 						log.Println("Failed to write video sample", err)
 						return
 					}
+					vpre = pck.Time
 				} else if pck.Idx == 1 && audioTrack != nil {
-					err := audioTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time})
+					// the audio is choppy for me unless I trim off 500 microseconds?!
+					err := audioTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time - apre - 500*time.Microsecond})
 					if err != nil {
 						log.Println("Failed to write audio sample", err)
 						return
 					}
+					apre = pck.Time
+					_ = apre
 				}
 			}
 		}
