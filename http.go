@@ -10,7 +10,6 @@ import (
 	"github.com/pion/webrtc/v3/pkg/media"
 	"log"
 	"sync"
-	"time"
 )
 
 func serveHTTP() {
@@ -100,36 +99,6 @@ func receiver(c *gin.Context) {
 		return
 	}
 
-	peerConnection.OnICEGatheringStateChange(func(state webrtc.ICEGathererState) {
-		log.Println("OnICEGatheringStateChange", state.String())
-	})
-	peerConnection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		log.Println("OnConnectionStateChange", state.String())
-	})
-	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		if candidate != nil {
-			log.Println("OnICECandidate", candidate.Address)
-		} else {
-			log.Println("OnICECandidate", candidate)
-		}
-	})
-	peerConnection.OnSignalingStateChange(func(state webrtc.SignalingState) {
-		log.Println("OnSignalingStateChange", state.String())
-	})
-
-	// keep-alive
-	//keepAlive := 20 * time.Second
-	//timer1 := time.NewTimer(keepAlive)
-	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
-		log.Println("Keep alive started")
-		// Register text message handling
-		d.OnMessage(func(msg webrtc.DataChannelMessage) {
-			log.Printf("Message from DataChannel '%s': '%s'\n", d.Label(), string(msg.Data))
-			//timer1.Reset(keepAlive)
-		})
-	})
-
-	// ADD Video Track
 	videoTrack, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", suuid+"_pion")
 	if err != nil {
 		log.Println("Failed to create video track", err)
@@ -153,7 +122,6 @@ func receiver(c *gin.Context) {
 		return
 	}
 
-	// audio
 	var audioTrack *webrtc.TrackLocalStaticSample
 	codecs := settings.Codecs
 	if len(codecs) > 1 && (codecs[1].Type() == av.PCM_ALAW || codecs[1].Type() == av.PCM_MULAW) {
@@ -228,9 +196,9 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 	if !ok {
 		return nil
 	}
-	codecs := settings.Codecs
-	sps := codecs[0].(h264parser.CodecData).SPS()
-	pps := codecs[0].(h264parser.CodecData).PPS()
+	codec := settings.Codecs[0].(h264parser.CodecData)
+	sps := codec.SPS()
+	pps := codec.PPS()
 	once := sync.Once{}
 
 	return func(connectionState webrtc.ICEConnectionState) {
@@ -246,28 +214,19 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 			return
 		}
 
-		//defer timer1.Stop()
 		cuuid, ch := config.connect(id)
 		log.Println("start stream", id, "client", cuuid)
 		defer func() {
 			log.Println("stop stream", id, "client", cuuid)
 			defer config.disconnect(id, cuuid)
 		}()
-		var Vpre time.Duration
 		var start bool
-		//timer1.Reset(5 * time.Second)
 		for {
 			select {
-			//case <-timer1.C:
-			//	log.Println("Keep-Alive Timer")
-			//	if err := pc.Close(); err != nil {
-			//		log.Println("close failed", err)
-			//	}
 			case <-control:
 				log.Println("Control closed")
 				return
 			case pck := <-ch:
-				//timer1.Reset(2 * time.Second)
 				if pck.IsKeyFrame {
 					start = true
 				}
@@ -281,16 +240,15 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 					pck.Data = pck.Data[4:]
 				}
 				if pck.Idx == 0 && videoTrack != nil {
-					err := videoTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time - Vpre}) //Samples: samples})
+					err := videoTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time})
 					if err != nil {
 						log.Println("Failed to write video sample", err)
 						return
 					}
-					Vpre = pck.Time
 				} else if pck.Idx == 1 && audioTrack != nil {
-					err := audioTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time - Vpre}) //Samples: uint32(len(pck.Data))})
+					err := audioTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time})
 					if err != nil {
-						log.Println("Failed to weite audio sample", err)
+						log.Println("Failed to write audio sample", err)
 						return
 					}
 				}
