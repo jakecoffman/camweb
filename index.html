@@ -113,8 +113,6 @@
           this.audioObject1 = event.streams[0]
         }
       })
-      // fetch the info about the stream from the server, setting up the tracks
-      this.getCodecInfo('demo1', pc)
       this.$refs.audio1.volume = 1
       this.pc1 = pc
 
@@ -144,18 +142,33 @@
           alert(await r.json())
         }
       },
-      setupConnection(id, cb) {
+      async setupConnection(id, cb) {
         console.log("Setup connection")
+
+        const ws = await new Promise(function(resolve, reject) {
+          const ws = new WebSocket('ws://127.0.0.1:8083/ws')
+          ws.onopen = function() {
+            resolve(ws)
+          }
+          ws.onerror = function(err) {
+            reject(err)
+          }
+        })
+        console.log("Websocket connected")
+
         const pc = new RTCPeerConnection({
           iceServers: [{
             urls: ["stun:stun.l.google.com:19302"]
           }]
-        });
+        })
         pc.onnegotiationneeded = async () => {
-          console.log('negotiationneeded')
-          let offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          await this.getRemoteSdp(id, pc);
+          console.log('negotiationneeded -- sending offer')
+          let offer = await pc.createOffer()
+          await pc.setLocalDescription(offer)
+          ws.send(JSON.stringify({
+            suuid: id,
+            data: btoa(pc.localDescription.sdp)
+          }))
 
           const iceTransport = pc.getSenders()[0].transport.iceTransport
 
@@ -163,58 +176,46 @@
             const pair = iceTransport.getSelectedCandidatePair()
             console.log('selectedcandidatepairchange -- local:', pair.local.type, pair.local.protocol, pair.local.port, 'remote:', pair.remote.type, pair.remote.protocol, pair.remote.port)
           }
-        };
+        }
         pc.ontrack = cb
         pc.onconnectionstatechange = e => console.log('connectionstatechange', pc.connectionState)
         pc.oniceconnectionstatechange = e => console.log('iceconnectionstatechange', pc.iceConnectionState)
         pc.onicegatheringstatechange = e => console.log('icegatheringstatechange', pc.iceGatheringState)
-        pc.onicecandidate = e => console.log('icecandidate', e.candidate ? e.candidate.candidate : null)
+        pc.onicecandidate = e => {
+          console.log('icecandidate', e.candidate ? e.candidate.candidate : null)
+          if (e.candidate == null) {
+            return
+          }
+          ws.send(JSON.stringify(e.candidate.toJSON()))
+        }
         pc.onicecandidateerror = e => console.log('icecandidateerror', e)
         pc.onsignalingstatechange = e => console.log('signalingstatechange', e)
-        return pc
-      },
-      async getCodecInfo(id, pc) {
-        console.log('get codec info')
-        const r = await fetch(`codec/${id}`)
-        const data = await r.json()
-        if (data.length > 1) {
-          console.log('add audio Transceiver')
-          pc.addTransceiver('audio', {
-            direction: 'sendrecv'
-          })
-        }
-        console.log('add video Transceiver')
+
+        // TODO add based on data from server
+        pc.addTransceiver('audio', {
+          direction: 'sendrecv'
+        })
         pc.addTransceiver('video', {
           direction: 'sendrecv'
-        });
-        //send ping becouse PION not handle RTCSessionDescription.close()
-        // const sendChannel = pc.createDataChannel('foo');
-        // sendChannel.onclose = () => console.log('sendChannel has closed');
-        // sendChannel.onopen = () => {
-          // console.log('sendChannel has opened');
-          // sendChannel.send('ping');
-          // setInterval(() => {
-          //   console.log('ping sent')
-          //   sendChannel.send('ping');
-          // }, 1000)
-        // }
-        // sendChannel.onmessage = e => log(`Message from DataChannel '${sendChannel.label}' payload '${e.data}'`);
-      },
-      async getRemoteSdp(id, pc) {
-        console.log('getRemoteSdp', id)
-        const r = await fetch('receive', {
-          method: 'POST',
-          body: JSON.stringify({
-            suuid: id,
-            data: btoa(pc.localDescription.sdp)
-          }),
-          headers: {'Content-Type': 'application/json'}
         })
-        const data = await r.text()
-        await pc.setRemoteDescription(new RTCSessionDescription({
-          type: 'answer',
-          sdp: atob(data)
-        }))
+
+        ws.onmessage = e => {
+          const msg = JSON.parse(e.data)
+          if (msg.sdp) {
+            console.log("Got answer")
+            pc.setRemoteDescription(new RTCSessionDescription({
+              type: 'answer',
+              sdp: msg.sdp
+            }))
+          } else if (msg.candidate) {
+            console.log("Got remote ICE candidate")
+            pc.addIceCandidate(msg)
+          } else {
+            console.log("Unknown Websocket Message", msg)
+          }
+        }
+
+        return pc
       }
     }
   })
