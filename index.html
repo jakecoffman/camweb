@@ -146,7 +146,7 @@
         console.log("Setup connection")
 
         const ws = await new Promise(function(resolve, reject) {
-          const ws = new WebSocket('ws://127.0.0.1:8083/ws')
+          const ws = new WebSocket(`ws://${location.host}/ws`)
           ws.onopen = function() {
             resolve(ws)
           }
