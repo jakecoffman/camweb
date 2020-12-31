@@ -11,18 +11,13 @@
 
       section {
           display: flex;
-          flex-direction: column;
-          height: 100vh;
+          gap: 1rem;
+          margin-bottom: 1rem;
       }
 
       video {
-          height: 100%;
-          width: auto;
-      }
-
-      .controls {
-          position: absolute;
-          z-index: 100;
+          height: auto;
+          width: 100%;
       }
 
       button {
@@ -35,100 +30,75 @@
 </head>
 <body>
 <article id="app">
+  <audio :src-object.prop.camel="audioObject"
+         :autoplay="true"
+         ref="audio"></audio>
+  <video :src-object.prop.camel="videoObject"
+         :autoplay="true"
+         :muted="true"></video>
   <section>
-    <audio :src-object.prop.camel="audioObject1"
-           :autoplay="true"
-           ref="audio1"
-    ></audio>
-    <video :src-object.prop.camel="videoObject1"
-           :autoplay="true"
-           :muted="true"
-           :controls="false">
-    </video>
-    <div class="controls">
-      <button @mousedown="control('demo1', 'start', 'Left')"
-              @mouseup="control('demo1', 'stop', 'Left')">
-        ⬅️
-      </button>
-      <button @mousedown="control('demo1', 'start', 'Right')"
-              @mouseup="control('demo1', 'stop', 'Right')">
-        ➡️
-      </button>
-      <button @mousedown="control('demo1', 'start', 'Up')"
-              @mouseup="control('demo1', 'stop', 'Up')">
-        ⬆️
-      </button>
-      <button @mousedown="control('demo1', 'start', 'Down')"
-              @mouseup="control('demo1', 'stop', 'Down')">
-        ⬇️
-      </button>
-    </div>
+    <button @mousedown="control(active, 'start', 'Left')"
+            @mouseup="control(active, 'stop', 'Left')">
+      ⬅️
+    </button>
+    <button @mousedown="control(active, 'start', 'Right')"
+            @mouseup="control(active, 'stop', 'Right')">
+      ➡️
+    </button>
+    <button @mousedown="control(active, 'start', 'Up')"
+            @mouseup="control(active, 'stop', 'Up')">
+      ⬆️
+    </button>
+    <button @mousedown="control(active, 'start', 'Down')"
+            @mouseup="control(active, 'stop', 'Down')">
+      ⬇️
+    </button>
   </section>
   <section>
-    <audio :src-object.prop.camel="audioObject2" :autoplay="true" ref="audio2"></audio>
-    <video
-            :src-object.prop.camel="videoObject2"
-            :autoplay="true"
-            :muted="true"
-            :controls="false">
-    </video>
-    <div class="controls">
-      <button @mousedown="control('demo2', 'start', 'Left')"
-              @mouseup="control('demo2', 'stop', 'Left')">
-        ⬅️
+      <button @click="connect(name)" v-for="(info, name) of streams" :key="name">
+        {{name}}
       </button>
-      <button @mousedown="control('demo2', 'start', 'Right')"
-              @mouseup="control('demo2', 'stop', 'Right')">
-        ➡️
-      </button>
-      <button @mousedown="control('demo2', 'start', 'Up')"
-              @mouseup="control('demo2', 'stop', 'Up')">
-        ⬆️
-      </button>
-      <button @mousedown="control('demo2', 'start', 'Down')"
-              @mouseup="control('demo2', 'stop', 'Down')">
-        ⬇️
-      </button>
-    </div>
   </section>
 </article>
 <script>
   const app = new Vue({
     el: '#app',
     data: {
-      audioObject1: null,
-      audioObject2: null,
-      videoObject1: null,
-      videoObject2: null,
-      pc1: null,
-      pc2: null
+      streams: null,
+      active: null,
+      audioObject: null,
+      videoObject: null,
+      pc: null
     },
-    mounted() {
-      // creates peer connection and sets callbacks
-      const pc = this.setupConnection('demo1', event => {
-        console.log(event.streams.length + ' track is delivered')
-        if (event.track.kind === 'video') {
-          this.videoObject1 = event.streams[0]
-        } else if (event.track.kind === 'audio') {
-          this.audioObject1 = event.streams[0]
-        }
-      })
-      this.$refs.audio1.volume = 1
-      this.pc1 = pc
-
-      // const pc2 = this.setupConnection('demo2', event => {
-      //   console.log(event.streams.length + ' track is delivered')
-      //   if (event.track.kind === 'video') {
-      //     this.videoObject2 = event.streams[0]
-      //   } else if (event.track.kind === 'audio') {
-      //     this.audioObject2 = event.streams[0]
-      //   }
-      // })
-      // this.getCodecInfo('demo2', pc2)
-      // this.$refs.audio2.volume = 1
-      // this.pc2 = pc2
+    async mounted() {
+      await this.getCameras()
+      const streams = Object.keys(this.streams)
+      if (streams.length > 0) {
+        this.connect(streams[0])
+      }
     },
     methods: {
+      async getCameras() {
+        const r = await fetch(`streams`)
+        if (!r.ok) {
+          return alert(await r.text())
+        }
+        this.streams = await r.json()
+      },
+      connect(name) {
+        this.active = name
+        console.log("connecting to", name)
+        const pc = this.setupConnection(name, event => {
+          console.log(event.streams.length + ' track is delivered')
+          if (event.track.kind === 'video') {
+            this.videoObject = event.streams[0]
+          } else if (event.track.kind === 'audio') {
+            this.audioObject = event.streams[0]
+          }
+        })
+        this.$refs.audio.volume = 1
+        this.pc = pc
+      },
       async control(id, cmd, dir) {
         const r = await fetch(`control/${id}`, {
           method: 'POST',
@@ -145,12 +115,12 @@
       async setupConnection(id, cb) {
         console.log("Setup connection")
 
-        const ws = await new Promise(function(resolve, reject) {
+        const ws = await new Promise(function (resolve, reject) {
           const ws = new WebSocket(`ws://${location.host}/ws`)
-          ws.onopen = function() {
+          ws.onopen = function () {
             resolve(ws)
           }
-          ws.onerror = function(err) {
+          ws.onerror = function (err) {
             reject(err)
           }
         })
@@ -168,7 +138,7 @@
 
           const iceTransport = pc.getSenders()[0].transport.iceTransport
 
-          iceTransport.onselectedcandidatepairchange = function(event) {
+          iceTransport.onselectedcandidatepairchange = function (event) {
             const pair = iceTransport.getSelectedCandidatePair()
             console.log('selectedcandidatepairchange -- local:', pair.local.type, pair.local.protocol, pair.local.port, 'remote:', pair.remote.type, pair.remote.protocol, pair.remote.port)
           }

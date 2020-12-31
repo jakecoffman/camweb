@@ -27,8 +27,11 @@ func ServeHTTP() {
 		context.File("index.html")
 	})
 	router.GET("/ws", connect)
-	router.GET("/codec/:uuid", func(c *gin.Context) {
-		if streams, ok := config.Streams[c.Param("uuid")]; ok {
+	router.GET("/streams", func(c *gin.Context) {
+		c.JSON(200, config.Streams)
+	})
+	router.GET("/streams/:id", func(c *gin.Context) {
+		if streams, ok := config.Streams[c.Param("id")]; ok {
 			c.JSON(200, streams.Codecs)
 		} else {
 			c.JSON(404, "No codecs found")
