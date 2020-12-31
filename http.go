@@ -1,4 +1,4 @@
-package main
+package camweb
 
 import (
 	"encoding/base64"
@@ -21,7 +21,7 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func serveHTTP() {
+func ServeHTTP() {
 	router := gin.Default()
 	router.GET("/", func(context *gin.Context) {
 		context.File("index.html")

@@ -1,4 +1,4 @@
-package main
+package camweb
 
 import (
 	"log"
@@ -7,7 +7,7 @@ import (
 	"github.com/deepch/vdk/format/rtsp"
 )
 
-func serveStreams() {
+func ServeStreams() {
 	for k, v := range config.Streams {
 		go stream(k, v.URL)
 	}

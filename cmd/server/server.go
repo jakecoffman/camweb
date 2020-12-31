@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/jakecoffman/camweb"
 	"log"
 	"os"
 	"os/signal"
@@ -9,8 +10,8 @@ import (
 
 func main() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
-	go serveHTTP()
-	go serveStreams()
+	go camweb.ServeHTTP()
+	go camweb.ServeStreams()
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-sigs

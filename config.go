@@ -1,4 +1,4 @@
-package main
+package camweb
 
 import (
 	"crypto/rand"
