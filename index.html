@@ -156,11 +156,7 @@
         })
         console.log("Websocket connected")
 
-        const pc = new RTCPeerConnection({
-          iceServers: [{
-            urls: ["stun:stun.l.google.com:19302"]
-          }]
-        })
+        const pc = new RTCPeerConnection()
         pc.onnegotiationneeded = async () => {
           console.log('negotiationneeded -- sending offer')
           let offer = await pc.createOffer()
@@ -182,7 +178,7 @@
         pc.oniceconnectionstatechange = e => console.log('iceconnectionstatechange', pc.iceConnectionState)
         pc.onicegatheringstatechange = e => console.log('icegatheringstatechange', pc.iceGatheringState)
         pc.onicecandidate = e => {
-          console.log('icecandidate', e.candidate ? e.candidate.candidate : null)
+          console.log('icecandidate', e.candidate ? e.candidate.toJSON() : null)
           if (e.candidate == null) {
             return
           }
@@ -208,7 +204,7 @@
               sdp: msg.sdp
             }))
           } else if (msg.candidate) {
-            console.log("Got remote ICE candidate")
+            console.log("Got remote ICE candidate", msg.candidate)
             pc.addIceCandidate(msg)
           } else {
             console.log("Unknown Websocket Message", msg)

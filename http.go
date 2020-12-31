@@ -70,6 +70,7 @@ func connect(c *gin.Context) {
 	}
 
 	defer ws.Close()
+	var wsWriteLock sync.Mutex
 
 	type Payload struct {
 		SUUID string `json:"suuid"`
@@ -102,17 +103,24 @@ func connect(c *gin.Context) {
 	}
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine))
 
-	peerConnection, err := api.NewPeerConnection(webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{
-			{
-				URLs: []string{"stun:stun.l.google.com:19302"},
-			},
-		},
-	})
+	peerConnection, err := api.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		log.Println("NewPeerConnection error", err)
 		return
 	}
+
+	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		if candidate == nil {
+			return
+		}
+		wsWriteLock.Lock()
+		defer wsWriteLock.Unlock()
+		if err := ws.WriteJSON(candidate.ToJSON()); err != nil {
+			log.Println("Failed sending ICE candidate", err)
+		} else {
+			log.Println("Sent ICE candidate", candidate.ToJSON().Candidate)
+		}
+	})
 
 	videoTrack, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", suuid+"_pion")
 	if err != nil {
@@ -163,18 +171,6 @@ func connect(c *gin.Context) {
 		}
 	}
 
-	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		if candidate == nil {
-			return
-		}
-		if err := ws.WriteJSON(candidate.ToJSON()); err != nil {
-			log.Println("Failed sending ICE candidate", err)
-			peerConnection.Close()
-		} else {
-			log.Println("Sent ICE candidate")
-		}
-	})
-
 	offer := webrtc.SessionDescription{
 		Type: webrtc.SDPTypeOffer,
 		SDP:  string(sd),
@@ -194,8 +190,25 @@ func connect(c *gin.Context) {
 		return
 	}
 
+	go func() {
+		for {
+			var candidate webrtc.ICECandidateInit
+			if err = ws.ReadJSON(&candidate); err != nil {
+				log.Println("Error reading candidate", err, candidate)
+				return
+			}
+			if err = peerConnection.AddICECandidate(candidate); err != nil {
+				log.Println("Failed adding ICE Candidate", err, candidate)
+				return
+			} else {
+				log.Println("Set remote ICE candidate", candidate.Candidate)
+			}
+		}
+	}()
+
 	peerConnection.OnICEConnectionStateChange(OnICEConnectionStateChange(peerConnection, suuid, videoTrack, audioTrack))
 
+	wsWriteLock.Lock()
 	if err = ws.WriteJSON(map[string]string{
 		"sdp": peerConnection.LocalDescription().SDP,
 	}); err != nil {
@@ -204,6 +217,7 @@ func connect(c *gin.Context) {
 	} else {
 		log.Println("Sent SDP")
 	}
+	wsWriteLock.Unlock()
 
 	time.Sleep(time.Minute)
 }
