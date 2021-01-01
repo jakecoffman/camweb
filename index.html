@@ -1,18 +1,30 @@
 <html lang="en">
 <head>
   <title>Home</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css" integrity="sha512-+4zCK9k+qNFUR5X+cKL9EIR+ZOhtIloNl9GIKS57V1MyNsYpYcUrUeQc9vNfzsWfV28IaLL3i96P9sdNyeRssA==" crossorigin="anonymous" />
   <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
   <style>
       html, body {
           margin: 0;
           background: black;
-          color: white;
+          color: #9f9f9f;
+          font-family: 'Roboto', sans-serif;
+          font-size: 5vw;
       }
 
       section {
           display: flex;
-          gap: 1rem;
+          flex-wrap: wrap;
+          gap: .25rem;
           margin-bottom: 1rem;
+      }
+
+      nav {
+          display: grid;
+          grid-gap: .25rem;
+          grid-template-columns: repeat(4, 1fr);
+          margin-top: .25rem;
+          margin-bottom: .25rem;
       }
 
       video {
@@ -21,10 +33,27 @@
       }
 
       button {
-          background: white;
+          background: none;
+          color: #9f9f9f;
           padding-left: 1rem;
           padding-right: 1rem;
-          border: none;
+          font-size: inherit;
+          border: 0.1em solid #9f9f9f;
+          border-radius: 0.12em;
+          box-sizing: border-box;
+          text-decoration: none;
+          transition: all 0.2s;
+      }
+
+      button:hover {
+          color: #000000;
+          background-color: #9f9f9f;
+          cursor: pointer;
+      }
+
+      .active {
+          background-color: #9f9f9f;
+          color: black;
       }
   </style>
 </head>
@@ -36,28 +65,28 @@
   <video :src-object.prop.camel="videoObject"
          :autoplay="true"
          :muted="true"></video>
-  <section>
+  <nav>
     <button @mousedown="control(active, 'start', 'Left')"
             @mouseup="control(active, 'stop', 'Left')">
-      ⬅️
+      <i class="fas fa-arrow-left"></i>
     </button>
     <button @mousedown="control(active, 'start', 'Right')"
             @mouseup="control(active, 'stop', 'Right')">
-      ➡️
+      <i class="fas fa-arrow-right"></i>
     </button>
     <button @mousedown="control(active, 'start', 'Up')"
             @mouseup="control(active, 'stop', 'Up')">
-      ⬆️
+      <i class="fas fa-arrow-up"></i>
     </button>
     <button @mousedown="control(active, 'start', 'Down')"
             @mouseup="control(active, 'stop', 'Down')">
-      ⬇️
+      <i class="fas fa-arrow-down"></i>
     </button>
-  </section>
+  </nav>
   <section>
-      <button @click="connect(name)" v-for="(info, name) of streams" :key="name">
-        {{name}}
-      </button>
+    <button @click="connect(name)" v-for="(info, name) of streams" :key="name" :class="{active: active === name}">
+      {{name}}
+    </button>
   </section>
 </article>
 <script>
