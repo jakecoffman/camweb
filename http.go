@@ -11,6 +11,8 @@ import (
 	"github.com/pion/webrtc/v3/pkg/media"
 	"log"
 	"net/http"
+	"net/http/pprof"
+	"strings"
 	"sync"
 	"time"
 )
@@ -58,6 +60,17 @@ func ServeHTTP() {
 			c.JSON(404, "No codecs found")
 		}
 	})
+	{
+		debug := router.Group("/debug")
+		debug.GET("/pprof/", gin.WrapF(pprof.Index))
+		debug.GET("/pprof/cmdline", gin.WrapF(pprof.Cmdline))
+		debug.GET("/pprof/profile", gin.WrapF(pprof.Profile))
+		debug.GET("/pprof/symbol", gin.WrapF(pprof.Symbol))
+		debug.GET("/pprof/goroutine", gin.WrapH(pprof.Handler("goroutine")))
+		debug.GET("/pprof/heap", gin.WrapH(pprof.Handler("heap")))
+		debug.GET("/pprof/threadcreate", gin.WrapH(pprof.Handler("threadcreate")))
+		debug.GET("/pprof/block", gin.WrapH(pprof.Handler("block")))
+	}
 	fmt.Printf("http://127.0.0.1%v\n", config.Server.HTTPPort)
 	err := router.Run(config.Server.HTTPPort)
 	if err != nil {
@@ -71,9 +84,6 @@ func connect(c *gin.Context) {
 		log.Println("upgrade:", err)
 		return
 	}
-
-	defer ws.Close()
-	var wsWriteLock sync.Mutex
 
 	type Payload struct {
 		SUUID string `json:"suuid"`
@@ -112,6 +122,7 @@ func connect(c *gin.Context) {
 		return
 	}
 
+	var wsWriteLock sync.Mutex
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if candidate == nil {
 			return
@@ -197,7 +208,9 @@ func connect(c *gin.Context) {
 		for {
 			var candidate webrtc.ICECandidateInit
 			if err = ws.ReadJSON(&candidate); err != nil {
-				log.Println("Error reading candidate", err, candidate)
+				if !strings.Contains(err.Error(), "use of closed network connection") {
+					log.Println("Error reading candidate", err)
+				}
 				return
 			}
 			if err = peerConnection.AddICECandidate(candidate); err != nil {
@@ -209,7 +222,7 @@ func connect(c *gin.Context) {
 		}
 	}()
 
-	peerConnection.OnICEConnectionStateChange(OnICEConnectionStateChange(peerConnection, suuid, videoTrack, audioTrack))
+	peerConnection.OnICEConnectionStateChange(OnICEConnectionStateChange(peerConnection, suuid, videoTrack, audioTrack, ws))
 
 	wsWriteLock.Lock()
 	if err = ws.WriteJSON(map[string]string{
@@ -221,11 +234,9 @@ func connect(c *gin.Context) {
 		log.Println("Sent SDP")
 	}
 	wsWriteLock.Unlock()
-
-	time.Sleep(time.Minute)
 }
 
-func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack, audioTrack *webrtc.TrackLocalStaticSample) func(state webrtc.ICEConnectionState) {
+func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack, audioTrack *webrtc.TrackLocalStaticSample, ws *websocket.Conn) func(state webrtc.ICEConnectionState) {
 	control := make(chan bool, 10)
 	settings, ok := config.Streams[id]
 	if !ok {
@@ -248,6 +259,7 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 			})
 			return
 		}
+		_ = ws.Close()
 
 		cuuid, ch := config.connect(id)
 		log.Println("start stream", id, "client", cuuid)

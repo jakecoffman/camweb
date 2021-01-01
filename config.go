@@ -31,7 +31,7 @@ type StreamSettings struct {
 }
 
 type viewer struct {
-	c chan av.Packet
+	ch chan av.Packet
 }
 
 func loadConfig() *Config {
@@ -56,8 +56,8 @@ func (c *Config) cast(uuid string, pck av.Packet) {
 	defer c.RUnlock()
 
 	for _, v := range c.Streams[uuid].clients {
-		if len(v.c) < cap(v.c) {
-			v.c <- pck
+		if len(v.ch) < cap(v.ch) {
+			v.ch <- pck
 		}
 	}
 }
@@ -84,7 +84,7 @@ func (c *Config) connect(suuid string) (string, chan av.Packet) {
 
 	cuuid := pseudoUUID()
 	ch := make(chan av.Packet, 100)
-	c.Streams[suuid].clients[cuuid] = viewer{c: ch}
+	c.Streams[suuid].clients[cuuid] = viewer{ch: ch}
 	return cuuid, ch
 }
 
@@ -105,9 +105,15 @@ func (c *Config) list() (string, []string) {
 
 func (c *Config) disconnect(suuid, cuuid string) {
 	c.Lock()
-	defer c.Unlock()
 
+	ch := c.Streams[suuid].clients[cuuid].ch
 	delete(c.Streams[suuid].clients, cuuid)
+	c.Unlock()
+
+	for len(ch) > 0 {
+		<-ch
+	}
+	close(ch)
 }
 
 func pseudoUUID() (uuid string) {

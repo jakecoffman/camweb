@@ -144,7 +144,12 @@
           }
         }
         pc.ontrack = cb
-        pc.onconnectionstatechange = e => console.log('connectionstatechange', pc.connectionState)
+        pc.onconnectionstatechange = e => {
+          console.log('connectionstatechange', pc.connectionState)
+          if (pc.connectionState === 'connected') {
+            ws.close()
+          }
+        }
         pc.oniceconnectionstatechange = e => console.log('iceconnectionstatechange', pc.iceConnectionState)
         pc.onicegatheringstatechange = e => console.log('icegatheringstatechange', pc.iceGatheringState)
         pc.onicecandidate = e => {
@@ -159,10 +164,10 @@
 
         // TODO add based on data from server
         pc.addTransceiver('audio', {
-          direction: 'sendrecv'
+          direction: 'recvonly'
         })
         pc.addTransceiver('video', {
-          direction: 'sendrecv'
+          direction: 'recvonly'
         })
 
         ws.onmessage = e => {
