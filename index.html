@@ -115,7 +115,7 @@
         this.streams = await r.json()
       },
       connect(name) {
-        if (this.pc) {
+        if (this.pc && this.pc.close) {
           this.pc.close()
         }
         this.active = name
