@@ -115,6 +115,9 @@
         this.streams = await r.json()
       },
       connect(name) {
+        if (this.pc) {
+          this.pc.close()
+        }
         this.active = name
         console.log("connecting to", name)
         const pc = this.setupConnection(name, event => {

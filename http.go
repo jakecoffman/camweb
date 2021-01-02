@@ -1,6 +1,7 @@
 package camweb
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"github.com/deepch/vdk/av"
@@ -236,6 +237,8 @@ func connect(c *gin.Context) {
 	wsWriteLock.Unlock()
 }
 
+var annexbNALUStartCode = []byte{0x00, 0x00, 0x00, 0x01}
+
 func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack, audioTrack *webrtc.TrackLocalStaticSample, ws *websocket.Conn) func(state webrtc.ICEConnectionState) {
 	control := make(chan bool, 10)
 	settings, ok := config.Streams[id]
@@ -245,6 +248,12 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 	codec := settings.Codecs[0].(h264parser.CodecData)
 	sps := codec.SPS()
 	pps := codec.PPS()
+	var keyframePreamble bytes.Buffer
+	keyframePreamble.Write(annexbNALUStartCode)
+	keyframePreamble.Write(sps)
+	keyframePreamble.Write(annexbNALUStartCode)
+	keyframePreamble.Write(pps)
+	keyframePreamble.Write(annexbNALUStartCode)
 	once := sync.Once{}
 
 	return func(connectionState webrtc.ICEConnectionState) {
@@ -282,8 +291,7 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 					continue
 				}
 				if pck.IsKeyFrame {
-					pck.Data = append([]byte("\000\000\001"+string(sps)+"\000\000\001"+string(pps)+"\000\000\001"), pck.Data[4:]...)
-
+					pck.Data = append(keyframePreamble.Bytes(), pck.Data[4:]...)
 				} else {
 					pck.Data = pck.Data[4:]
 				}
