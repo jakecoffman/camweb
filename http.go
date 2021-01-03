@@ -240,7 +240,7 @@ func connect(c *gin.Context) {
 var annexbNALUStartCode = []byte{0x00, 0x00, 0x00, 0x01}
 
 func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack, audioTrack *webrtc.TrackLocalStaticSample, ws *websocket.Conn) func(state webrtc.ICEConnectionState) {
-	control := make(chan bool, 10)
+	control := make(chan struct{})
 	settings, ok := config.Streams[id]
 	if !ok {
 		return nil
@@ -269,8 +269,14 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 			return
 		}
 		_ = ws.Close()
+		defer once.Do(func() {
+			err := pc.Close()
+			if err != nil {
+				log.Println("peerConnection Close error", err)
+			}
+		})
 
-		cuuid, ch := config.connect(id)
+		cuuid, ch := config.connect(id, control)
 		log.Println("start stream", id, "client", cuuid)
 		defer func() {
 			log.Println("stop stream", id, "client", cuuid)
@@ -281,7 +287,6 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 		for {
 			select {
 			case <-control:
-				log.Println("Control closed")
 				return
 			case pck := <-ch:
 				if pck.IsKeyFrame {
@@ -296,21 +301,24 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 					pck.Data = pck.Data[4:]
 				}
 				if pck.Idx == 0 && videoTrack != nil {
-					err := videoTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time - vpre})
-					if err != nil {
-						log.Println("Failed to write video sample", err)
-						return
+					if vpre != 0 {
+						err := videoTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time - vpre})
+						if err != nil {
+							log.Println("Failed to write video sample", err)
+							return
+						}
 					}
 					vpre = pck.Time
 				} else if pck.Idx == 1 && audioTrack != nil {
-					// the audio is choppy for me unless I trim off 500 microseconds?!
-					err := audioTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time - apre - 500*time.Microsecond})
-					if err != nil {
-						log.Println("Failed to write audio sample", err)
-						return
+					if apre != 0 {
+						// the audio is choppy for me unless I trim off 500 microseconds?!
+						err := audioTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time - apre - 500*time.Microsecond})
+						if err != nil {
+							log.Println("Failed to write audio sample", err)
+							return
+						}
 					}
 					apre = pck.Time
-					_ = apre
 				}
 			}
 		}

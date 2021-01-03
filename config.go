@@ -31,7 +31,8 @@ type StreamSettings struct {
 }
 
 type viewer struct {
-	ch chan av.Packet
+	ch      chan av.Packet
+	control chan struct{}
 }
 
 func loadConfig() *Config {
@@ -58,6 +59,9 @@ func (c *Config) cast(uuid string, pck av.Packet) {
 	for _, v := range c.Streams[uuid].clients {
 		if len(v.ch) < cap(v.ch) {
 			v.ch <- pck
+		} else {
+			log.Println("Removing full channel")
+			close(v.control)
 		}
 	}
 }
@@ -78,13 +82,13 @@ func (c *Config) setCodec(suuid string, codecs []av.CodecData) {
 	c.Streams[suuid] = t
 }
 
-func (c *Config) connect(suuid string) (string, chan av.Packet) {
+func (c *Config) connect(suuid string, control chan struct{}) (string, chan av.Packet) {
 	c.Lock()
 	defer c.Unlock()
 
 	cuuid := pseudoUUID()
 	ch := make(chan av.Packet, 100)
-	c.Streams[suuid].clients[cuuid] = viewer{ch: ch}
+	c.Streams[suuid].clients[cuuid] = viewer{ch: ch, control: control}
 	return cuuid, ch
 }
 
