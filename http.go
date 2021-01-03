@@ -291,17 +291,12 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 			case pck := <-ch:
 				if pck.IsKeyFrame {
 					start = true
-				}
-				if !start {
-					continue
-				}
-				if pck.IsKeyFrame {
 					pck.Data = append(keyframePreamble.Bytes(), pck.Data[4:]...)
 				} else {
 					pck.Data = pck.Data[4:]
 				}
 				if pck.Idx == 0 && videoTrack != nil {
-					if vpre != 0 {
+					if vpre != 0 && start {
 						err := videoTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time - vpre})
 						if err != nil {
 							log.Println("Failed to write video sample", err)
@@ -310,7 +305,7 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 					}
 					vpre = pck.Time
 				} else if pck.Idx == 1 && audioTrack != nil {
-					if apre != 0 {
+					if apre != 0 && start {
 						// the audio is choppy for me unless I trim off 500 microseconds?!
 						err := audioTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time - apre - 500*time.Microsecond})
 						if err != nil {
