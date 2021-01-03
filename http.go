@@ -283,7 +283,7 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 			defer config.disconnect(id, cuuid)
 		}()
 		var start bool
-		var vpre, apre time.Duration
+		var apre time.Duration
 		for {
 			select {
 			case <-control:
@@ -296,14 +296,13 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 					pck.Data = pck.Data[4:]
 				}
 				if pck.Idx == 0 && videoTrack != nil {
-					if vpre != 0 && start {
+					if start {
 						err := videoTrack.WriteSample(media.Sample{Data: pck.Data, Duration: 30 * time.Millisecond})
 						if err != nil {
 							log.Println("Failed to write video sample", err)
 							return
 						}
 					}
-					vpre = pck.Time
 				} else if pck.Idx == 1 && audioTrack != nil {
 					if apre != 0 && start {
 						// the audio is choppy for me unless I trim off 500 microseconds?!
