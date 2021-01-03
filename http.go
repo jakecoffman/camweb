@@ -297,7 +297,7 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 				}
 				if pck.Idx == 0 && videoTrack != nil {
 					if vpre != 0 && start {
-						err := videoTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time - vpre})
+						err := videoTrack.WriteSample(media.Sample{Data: pck.Data, Duration: 30 * time.Millisecond})
 						if err != nil {
 							log.Println("Failed to write video sample", err)
 							return
