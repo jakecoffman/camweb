@@ -11,4 +11,4 @@ require (
 	github.com/xinsnake/go-http-digest-auth-client v0.6.0
 )
 
-replace github.com/pion/interceptor => github.com/jakecoffman/interceptor v0.0.10-0.20210104035207-6bca8c5aa244
+replace github.com/pion/interceptor => github.com/jakecoffman/interceptor v0.0.10-0.20210104040413-9bbdc870870e
