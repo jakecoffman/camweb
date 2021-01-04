@@ -198,11 +198,19 @@ func connect(c *gin.Context) {
 			log.Println("AddTransceiverFromTrack error", err)
 			return
 		}
-		_, err = peerConnection.AddTrack(audioTrack)
+		rtpSender, err := peerConnection.AddTrack(audioTrack)
 		if err != nil {
 			log.Println(err)
 			return
 		}
+		go func() {
+			rtcpBuf := make([]byte, 1500)
+			for {
+				if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
+					return
+				}
+			}
+		}()
 	}
 
 	offer := webrtc.SessionDescription{
