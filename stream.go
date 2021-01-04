@@ -44,8 +44,10 @@ func stream(name, url string) {
 			}
 			config.cast(name, pkt)
 		}
-		err = session.Close()
-		if err != nil {
+		if err = session.Teardown(); err != nil {
+			log.Println("teardown error", err)
+		}
+		if err = session.Close(); err != nil {
 			log.Println("session Close error", err)
 		}
 		log.Println(name, "reconnect wait 5s")

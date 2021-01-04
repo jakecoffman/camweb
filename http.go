@@ -237,7 +237,6 @@ func connect(c *gin.Context) {
 		"sdp": peerConnection.LocalDescription().SDP,
 	}); err != nil {
 		log.Println("Failed sending SDP back", err)
-		return
 	} else {
 		log.Println("Sent SDP")
 	}
