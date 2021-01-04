@@ -8,6 +8,8 @@ import (
 	"github.com/deepch/vdk/codec/h264parser"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/pion/interceptor"
+	"github.com/pion/interceptor/pkg/nack"
 	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media"
 	"log"
@@ -115,7 +117,12 @@ func connect(c *gin.Context) {
 		log.Println("RegisterDefaultCodecs error", err)
 		return
 	}
-	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine))
+	registry := &interceptor.Registry{}
+	if err = ConfigureNack(mediaEngine, registry); err != nil {
+		log.Println("ConfigureNack error", err)
+		return
+	}
+	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithInterceptorRegistry(registry))
 
 	peerConnection, err := api.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
@@ -317,4 +324,23 @@ func OnICEConnectionStateChange(pc *webrtc.PeerConnection, id string, videoTrack
 			}
 		}
 	}
+}
+
+// ConfigureNack will setup everything necessary for handling generating/responding to nack messages.
+func ConfigureNack(mediaEngine *webrtc.MediaEngine, interceptorRegistry *interceptor.Registry) error {
+	generator, err := nack.NewGeneratorInterceptor()
+	if err != nil {
+		return err
+	}
+
+	responder, err := nack.NewResponderInterceptor()
+	if err != nil {
+		return err
+	}
+
+	mediaEngine.RegisterFeedback(webrtc.RTCPFeedback{Type: "nack"}, webrtc.RTPCodecTypeVideo)
+	mediaEngine.RegisterFeedback(webrtc.RTCPFeedback{Type: "nack", Parameter: "pli"}, webrtc.RTPCodecTypeVideo)
+	interceptorRegistry.Add(responder)
+	interceptorRegistry.Add(generator)
+	return nil
 }
