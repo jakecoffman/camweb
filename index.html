@@ -196,10 +196,10 @@
 
         // TODO add based on data from server
         pc.addTransceiver('audio', {
-          direction: 'recvonly'
+          direction: 'sendrecv'
         })
         pc.addTransceiver('video', {
-          direction: 'recvonly'
+          direction: 'sendrecv' // must use sendrecv so nacks work
         })
 
         ws.onmessage = e => {

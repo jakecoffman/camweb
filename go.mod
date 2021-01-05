@@ -10,5 +10,3 @@ require (
 	github.com/pion/webrtc/v3 v3.0.0
 	github.com/xinsnake/go-http-digest-auth-client v0.6.0
 )
-
-replace github.com/pion/interceptor => github.com/jakecoffman/interceptor v0.0.10-0.20210104040413-9bbdc870870e
