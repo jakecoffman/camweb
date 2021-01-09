@@ -106,7 +106,7 @@
       await this.getCameras()
       const streams = Object.keys(this.streams)
       if (streams.length > 0) {
-        this.connect(streams[0])
+        await this.connect(streams[0])
       }
     },
     methods: {
@@ -117,12 +117,12 @@
         }
         this.streams = await r.json()
       },
-      connect(name) {
-        if (this.pc && this.pc.close) {
+      async connect(name) {
+        if (this.pc) {
           this.pc.close()
         }
         this.active = name
-        const pc = this.setupConnection(name, event => {
+        this.pc = await this.setupConnection(name, event => {
           if (event.track.kind === 'video') {
             this.videoObject = event.streams[0]
           } else if (event.track.kind === 'audio') {
@@ -130,7 +130,6 @@
           }
         })
         this.$refs.audio.volume = 1
-        this.pc = pc
       },
       async control(id, cmd, dir) {
         const r = await fetch(`control/${id}`, {
