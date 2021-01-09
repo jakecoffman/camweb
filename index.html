@@ -163,8 +163,8 @@
           let offer = await pc.createOffer()
           await pc.setLocalDescription(offer)
           ws.send(JSON.stringify({
-            suuid: id,
-            data: btoa(pc.localDescription.sdp)
+            id,
+            sdp: pc.localDescription.sdp
           }))
 
           const iceTransport = pc.getSenders()[0].transport.iceTransport

@@ -47,15 +47,15 @@ func loadConfig() *Config {
 	return &tmp
 }
 
-func (c *Config) setStream(suuid string, codecs []av.CodecData, videoTrack, audioTrack *webrtc.TrackLocalStaticSample) {
+func (c *Config) setStream(id string, codecs []av.CodecData, videoTrack, audioTrack *webrtc.TrackLocalStaticSample) {
 	c.Lock()
 	defer c.Unlock()
 
-	t := c.Streams[suuid]
+	t := c.Streams[id]
 	t.Codecs = codecs
 	t.VideoTrack = videoTrack
 	t.AudioTrack = audioTrack
-	c.Streams[suuid] = t
+	c.Streams[id] = t
 }
 
 func (c *Config) list() (string, []string) {

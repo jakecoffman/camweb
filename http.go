@@ -1,7 +1,6 @@
 package camweb
 
 import (
-	"encoding/base64"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -83,8 +82,8 @@ func connect(c *gin.Context) {
 	}
 
 	type Payload struct {
-		SUUID string `json:"suuid"`
-		Data  string `json:"data"`
+		ID  string `json:"id"`
+		SDP string `json:"sdp"`
 	}
 	var payload Payload
 	if err = ws.ReadJSON(&payload); err != nil {
@@ -92,17 +91,9 @@ func connect(c *gin.Context) {
 		return
 	}
 
-	suuid := payload.SUUID
-
-	stream, ok := config.Streams[suuid]
+	stream, ok := config.Streams[payload.ID]
 	if !ok {
 		log.Println("stream not found")
-		return
-	}
-
-	sd, err := base64.StdEncoding.DecodeString(payload.Data)
-	if err != nil {
-		log.Println("DecodeString error", err)
 		return
 	}
 
@@ -170,7 +161,7 @@ func connect(c *gin.Context) {
 
 	offer := webrtc.SessionDescription{
 		Type: webrtc.SDPTypeOffer,
-		SDP:  string(sd),
+		SDP:  payload.SDP,
 	}
 	if err := peerConnection.SetRemoteDescription(offer); err != nil {
 		log.Println("SetRemoteDescription error", err, offer.SDP)
