@@ -1,6 +1,6 @@
 # camweb
 
-Connect to RTSP webcams from your browser!
+Connect to RTSP cameras from your browser!
 
 Great for security or baby monitors.
 
