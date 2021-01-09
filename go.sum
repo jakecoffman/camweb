@@ -6,6 +6,8 @@ github.com/deepch/vdk v0.0.0-20200419065055-420338e0cc50 h1:pLIfUDFQbUIggyJbeC6I
 github.com/deepch/vdk v0.0.0-20200419065055-420338e0cc50/go.mod h1:7H7GjjI4rfnSeijznawyOce8q2esWSr29CN3TqBh0Mc=
 github.com/deepch/vdk v0.0.0-20201028150743-4289f32dc8a3 h1:tnN9KTXHw1+pVE2ruGx/EmIzz9kr9L91hu1Y1OyoZIo=
 github.com/deepch/vdk v0.0.0-20201028150743-4289f32dc8a3/go.mod h1:REkQY9owyTu6mlvoHzUGFz1Y/C/XMYA/EqM3ezHZRBc=
+github.com/deepch/vdk v0.0.0-20210109142448-33b07c6a20f1 h1:++eVqEFPqFLklOo3iX6LYuhheMD2Om5XtIQWS+9PBPI=
+github.com/deepch/vdk v0.0.0-20210109142448-33b07c6a20f1/go.mod h1:mFKn6/jT2OgoMrw/2kgoVDN67kokS5T3kRn04x3eJXg=
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
 github.com/fsnotify/fsnotify v1.4.9/go.mod h1:znqG4EE+3YCdAaPaxE2ZRY/06pZUdp0tY4IgpuI1SZQ=
 github.com/gin-contrib/sse v0.1.0 h1:Y/yl/+YNO8GZSjAhjMsSuLt29uWRFHdHYUb5lYOV9qE=
@@ -114,6 +116,8 @@ github.com/pion/srtp v1.5.1 h1:9Q3jAfslYZBt+C69SI/ZcONJh9049JUHZWYRRf5KEKw=
 github.com/pion/srtp v1.5.1/go.mod h1:B+QgX5xPeQTNc1CJStJPHzOlHK66ViMDWTT0HZTCkcA=
 github.com/pion/srtp/v2 v2.0.0-rc.3 h1:1fPiK1nJlNyh235tSGgBnXrPc99wK1/D707f6ntb3qY=
 github.com/pion/srtp/v2 v2.0.0-rc.3/go.mod h1:S6J9oY6ahAXdU3ni4nUwhWTJuBfssFjPxoB0u41TBpY=
+github.com/pion/srtp/v2 v2.0.0 h1:rS4vRR0XHakmnXkaptPaXHxRiqSPWSCrDXFl/ZWMLo0=
+github.com/pion/srtp/v2 v2.0.0/go.mod h1:QYOU1YKWaE/NJjR2WxtDMc+AfS9So0uz0RnadqOGJO8=
 github.com/pion/stun v0.3.5 h1:uLUCBCkQby4S1cf6CGuR9QrVOKcvUwFeemaC865QHDg=
 github.com/pion/stun v0.3.5/go.mod h1:gDMim+47EeEtfWogA37n6qXZS88L5V6LqFcf+DZA2UA=
 github.com/pion/transport v0.6.0/go.mod h1:iWZ07doqOosSLMhZ+FXUTq+TamDoXSllxpbGcfkCmbE=
@@ -131,6 +135,8 @@ github.com/pion/udp v0.1.0/go.mod h1:BPELIjbwE9PRbd/zxI/KYBnbo7B6+oA6YuEaNE8lths
 github.com/pion/webrtc/v2 v2.2.23/go.mod h1:1lN/3EcATkQxc7GJSQbISCGC2l64Xu2VSLpwEG3c/tM=
 github.com/pion/webrtc/v3 v3.0.0 h1:/eTiY3NbfpKj5op8cqtCZlpTv9/yumd17YRinDNOUX0=
 github.com/pion/webrtc/v3 v3.0.0/go.mod h1:/xwKHOAk1Y8dspJcxMwuTtxpi8t/Gzks37iB3W6hNuM=
+github.com/pion/webrtc/v3 v3.0.1 h1:p2UupWGSfywfGjTeFSoh1xIOlwMWJL6gATZ5edAtiHw=
+github.com/pion/webrtc/v3 v3.0.1/go.mod h1:ePzv8r2tzj95nJuPsns/7OiS5M8RiGSULdxzIRbXOtQ=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

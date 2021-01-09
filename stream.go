@@ -65,52 +65,55 @@ func stream(name, url string) {
 
 		config.setStream(name, codecs, videoTrack, audioTrack)
 
-		var start bool
-		var apre time.Duration
+		var videoPrevious time.Duration
 		for {
 			pck, err := session.ReadPacket()
 			if err != nil {
-				log.Println(name, err)
+				log.Println("Failed reading packet on stream", name, err)
 				break
 			}
-			if pck.IsKeyFrame {
-				start = true
+			if pck.Idx == 0 && videoTrack != nil {
+				if pck.IsKeyFrame {
+					// SPS and PPS may change
+					codecs, err = session.Streams()
+					if err != nil {
+						break
+					}
+					codec := codecs[0].(h264parser.CodecData)
+					var keyframePreamble bytes.Buffer
+					keyframePreamble.Write(annexbNALUStartCode)
+					keyframePreamble.Write(codec.SPS())
+					keyframePreamble.Write(annexbNALUStartCode)
+					keyframePreamble.Write(codec.PPS())
+					keyframePreamble.Write(annexbNALUStartCode)
 
-				// SPS and PPS may change
+					pck.Data = append(keyframePreamble.Bytes(), pck.Data[4:]...)
+				} else {
+					pck.Data = pck.Data[4:]
+				}
+
+				err = videoTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time - videoPrevious})
+				if err != nil {
+					log.Println("Failed to write video sample", err)
+					break
+				}
+				videoPrevious = pck.Time
+			} else if pck.Idx == 1 && audioTrack != nil {
 				codecs, err = session.Streams()
 				if err != nil {
 					break
 				}
-				codec := codecs[0].(h264parser.CodecData)
-				var keyframePreamble bytes.Buffer
-				keyframePreamble.Write(annexbNALUStartCode)
-				keyframePreamble.Write(codec.SPS())
-				keyframePreamble.Write(annexbNALUStartCode)
-				keyframePreamble.Write(codec.PPS())
-				keyframePreamble.Write(annexbNALUStartCode)
-
-				pck.Data = append(keyframePreamble.Bytes(), pck.Data[4:]...)
-			} else {
-				pck.Data = pck.Data[4:]
-			}
-			if pck.Idx == 0 && videoTrack != nil {
-				if start {
-					err := videoTrack.WriteSample(media.Sample{Data: pck.Data, Duration: 30 * time.Millisecond})
-					if err != nil {
-						log.Println("Failed to write video sample", err)
-						break
-					}
+				codec := codecs[1].(av.AudioCodecData)
+				duration, err := codec.PacketDuration(pck.Data)
+				if err != nil {
+					log.Println("Failed to get duration for audio:", err)
+					break
 				}
-			} else if pck.Idx == 1 && audioTrack != nil {
-				if apre != 0 && start {
-					// the audio is choppy for me unless I trim off 500 microseconds?!
-					err := audioTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time - apre - 500*time.Microsecond})
-					if err != nil {
-						log.Println("Failed to write audio sample", err)
-						break
-					}
+				err = audioTrack.WriteSample(media.Sample{Data: pck.Data, Duration: duration})
+				if err != nil {
+					log.Println("Failed to write audio sample", err)
+					break
 				}
-				apre = pck.Time
 			}
 		}
 		if err = session.Teardown(); err != nil {
