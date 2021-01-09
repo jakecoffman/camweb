@@ -90,6 +90,9 @@
   </section>
 </article>
 <script>
+  // Comment this line to get debugging in console.
+  console.trace = () => {}
+
   const app = new Vue({
     el: '#app',
     data: {
@@ -119,9 +122,7 @@
           this.pc.close()
         }
         this.active = name
-        console.log("connecting to", name)
         const pc = this.setupConnection(name, event => {
-          console.log(event.streams.length + ' track is delivered')
           if (event.track.kind === 'video') {
             this.videoObject = event.streams[0]
           } else if (event.track.kind === 'audio') {
@@ -145,8 +146,6 @@
         }
       },
       async setupConnection(id, cb) {
-        console.log("Setup connection")
-
         const ws = await new Promise(function (resolve, reject) {
           const ws = new WebSocket(`ws://${location.host}/ws`)
           ws.onopen = function () {
@@ -156,11 +155,11 @@
             reject(err)
           }
         })
-        console.log("Websocket connected")
+        console.trace("Websocket connected")
 
         const pc = new RTCPeerConnection()
         pc.onnegotiationneeded = async () => {
-          console.log('negotiationneeded -- sending offer')
+          console.trace('negotiationneeded -- sending offer')
           let offer = await pc.createOffer()
           await pc.setLocalDescription(offer)
           ws.send(JSON.stringify({
@@ -172,27 +171,27 @@
 
           iceTransport.onselectedcandidatepairchange = function (event) {
             const pair = iceTransport.getSelectedCandidatePair()
-            console.log('selectedcandidatepairchange -- local:', pair.local.type, pair.local.protocol, pair.local.port, 'remote:', pair.remote.type, pair.remote.protocol, pair.remote.port)
+            console.trace('selectedcandidatepairchange -- local:', pair.local.type, pair.local.protocol, pair.local.port, 'remote:', pair.remote.type, pair.remote.protocol, pair.remote.port)
           }
         }
         pc.ontrack = cb
         pc.onconnectionstatechange = e => {
-          console.log('connectionstatechange', pc.connectionState)
+          console.trace('connectionstatechange', pc.connectionState)
           if (pc.connectionState === 'connected') {
             ws.close()
           }
         }
-        pc.oniceconnectionstatechange = e => console.log('iceconnectionstatechange', pc.iceConnectionState)
-        pc.onicegatheringstatechange = e => console.log('icegatheringstatechange', pc.iceGatheringState)
+        pc.oniceconnectionstatechange = e => console.trace('iceconnectionstatechange', pc.iceConnectionState)
+        pc.onicegatheringstatechange = e => console.trace('icegatheringstatechange', pc.iceGatheringState)
         pc.onicecandidate = e => {
-          console.log('icecandidate', e.candidate ? e.candidate.toJSON() : null)
+          console.trace('icecandidate', e.candidate ? e.candidate.toJSON() : null)
           if (e.candidate == null) {
             return
           }
           ws.send(JSON.stringify(e.candidate.toJSON()))
         }
-        pc.onicecandidateerror = e => console.log('icecandidateerror', e)
-        pc.onsignalingstatechange = e => console.log('signalingstatechange', e)
+        pc.onicecandidateerror = e => console.trace('icecandidateerror', e)
+        pc.onsignalingstatechange = e => console.trace('signalingstatechange', e)
 
         // TODO add based on data from server
         pc.addTransceiver('audio', {
@@ -205,16 +204,16 @@
         ws.onmessage = e => {
           const msg = JSON.parse(e.data)
           if (msg.sdp) {
-            console.log("Got answer")
+            console.trace("Got answer")
             pc.setRemoteDescription(new RTCSessionDescription({
               type: 'answer',
               sdp: msg.sdp
             }))
           } else if (msg.candidate) {
-            console.log("Got remote ICE candidate", msg.candidate)
+            console.trace("Got remote ICE candidate", msg.candidate)
             pc.addIceCandidate(msg)
           } else {
-            console.log("Unknown Websocket Message", msg)
+            console.trace("Unknown Websocket Message", msg)
           }
         }
 

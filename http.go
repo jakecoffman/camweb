@@ -11,7 +11,6 @@ import (
 	"log"
 	"net/http"
 	"net/http/pprof"
-	"strings"
 	"sync"
 )
 
@@ -131,12 +130,10 @@ func connect(c *gin.Context) {
 			return
 		}
 		wsWriteLock.Lock()
-		defer wsWriteLock.Unlock()
 		if err := ws.WriteJSON(candidate.ToJSON()); err != nil {
 			log.Println("Failed sending ICE candidate", err)
-		} else {
-			log.Println("Sent ICE candidate", candidate.ToJSON().Candidate)
 		}
+		wsWriteLock.Unlock()
 	})
 
 	rtpSender, err := peerConnection.AddTrack(stream.VideoTrack)
@@ -194,16 +191,11 @@ func connect(c *gin.Context) {
 		for {
 			var candidate webrtc.ICECandidateInit
 			if err = ws.ReadJSON(&candidate); err != nil {
-				if !strings.Contains(err.Error(), "use of closed network connection") {
-					log.Println("Error reading candidate", err)
-				}
 				return
 			}
 			if err = peerConnection.AddICECandidate(candidate); err != nil {
 				log.Println("Failed adding ICE Candidate", err, candidate)
 				return
-			} else {
-				log.Println("Set remote ICE candidate", candidate.Candidate)
 			}
 		}
 	}()
@@ -212,9 +204,7 @@ func connect(c *gin.Context) {
 	if err = ws.WriteJSON(map[string]string{
 		"sdp": peerConnection.LocalDescription().SDP,
 	}); err != nil {
-		log.Println("Failed sending SDP back", err)
-	} else {
-		log.Println("Sent SDP")
+		log.Println("Failed sending SDP", err)
 	}
 	wsWriteLock.Unlock()
 }
