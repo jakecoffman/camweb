@@ -1,10 +1,16 @@
 # camweb
 
-This is a fork of https://github.com/deepch/RTSPtoWebRTC
+Connect to RTSP webcams from your browser!
 
-In the process of cleaning up the Go code and creating a nice UI I found
-some bugs, so now this project has a lot of debug statements.
+Great for security or baby monitors.
 
-## Configuration
+## Installation
 
-Copy the config_sample.json to config.json to get started.
+1. Install Go on path
+1. Clone repo
+1. Run `go build` 
+1. Add a `config.json` to add cameras (see `config_sample.json`)
+
+## Credit
+
+Originally forked from https://github.com/deepch/RTSPtoWebRTC
