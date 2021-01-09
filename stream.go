@@ -1,6 +1,11 @@
 package camweb
 
 import (
+	"bytes"
+	"github.com/deepch/vdk/av"
+	"github.com/deepch/vdk/codec/h264parser"
+	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v3/pkg/media"
 	"log"
 	"time"
 
@@ -12,6 +17,8 @@ func ServeStreams() {
 		go stream(k, v.URL)
 	}
 }
+
+var annexbNALUStartCode = []byte{0x00, 0x00, 0x00, 0x01}
 
 // stream connects to the camera and starts sending it to any connected clients
 func stream(name, url string) {
@@ -29,20 +36,82 @@ func stream(name, url string) {
 			time.Sleep(5 * time.Second)
 			continue
 		}
-		codec, err := session.Streams()
+		codecs, err := session.Streams()
 		if err != nil {
 			log.Println(name, err)
 			time.Sleep(5 * time.Second)
 			continue
 		}
-		config.setCodec(name, codec)
+
+		videoTrack, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", name+"_pion")
+		if err != nil {
+			log.Println("Failed to create video track", err)
+			return
+		}
+
+		var audioTrack *webrtc.TrackLocalStaticSample
+		if len(codecs) > 1 && (codecs[1].Type() == av.PCM_ALAW || codecs[1].Type() == av.PCM_MULAW) {
+			switch codecs[1].Type() {
+			case av.PCM_ALAW:
+				audioTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMA}, "audio", name+"audio")
+			case av.PCM_MULAW:
+				audioTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMU}, "audio", name+"audio")
+			}
+			if err != nil {
+				log.Println(err)
+				return
+			}
+		}
+
+		config.setStream(name, codecs, videoTrack, audioTrack)
+
+		var start bool
+		var apre time.Duration
 		for {
-			pkt, err := session.ReadPacket()
+			pck, err := session.ReadPacket()
 			if err != nil {
 				log.Println(name, err)
 				break
 			}
-			config.cast(name, pkt)
+			if pck.IsKeyFrame {
+				start = true
+
+				// SPS and PPS may change
+				codecs, err = session.Streams()
+				if err != nil {
+					break
+				}
+				codec := codecs[0].(h264parser.CodecData)
+				var keyframePreamble bytes.Buffer
+				keyframePreamble.Write(annexbNALUStartCode)
+				keyframePreamble.Write(codec.SPS())
+				keyframePreamble.Write(annexbNALUStartCode)
+				keyframePreamble.Write(codec.PPS())
+				keyframePreamble.Write(annexbNALUStartCode)
+
+				pck.Data = append(keyframePreamble.Bytes(), pck.Data[4:]...)
+			} else {
+				pck.Data = pck.Data[4:]
+			}
+			if pck.Idx == 0 && videoTrack != nil {
+				if start {
+					err := videoTrack.WriteSample(media.Sample{Data: pck.Data, Duration: 30 * time.Millisecond})
+					if err != nil {
+						log.Println("Failed to write video sample", err)
+						break
+					}
+				}
+			} else if pck.Idx == 1 && audioTrack != nil {
+				if apre != 0 && start {
+					// the audio is choppy for me unless I trim off 500 microseconds?!
+					err := audioTrack.WriteSample(media.Sample{Data: pck.Data, Duration: pck.Time - apre - 500*time.Microsecond})
+					if err != nil {
+						log.Println("Failed to write audio sample", err)
+						break
+					}
+				}
+				apre = pck.Time
+			}
 		}
 		if err = session.Teardown(); err != nil {
 			log.Println("teardown error", err)
