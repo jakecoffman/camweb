@@ -55,10 +55,26 @@
           background-color: #9f9f9f;
           color: black;
       }
+
+      #state {
+          position: absolute;
+      }
+
+      .fade-enter-active, .fade-leave-active {
+          transition: opacity .5s;
+      }
+      .fade-enter, .fade-leave-to {
+          opacity: 0;
+      }
   </style>
 </head>
 <body>
 <article id="app">
+  <transition-group name="fade">
+    <h3 v-if="state !== 'connected'" id="state" :key="state">
+      {{state}}
+    </h3>
+  </transition-group>
   <audio :src-object.prop.camel="audioObject"
          :autoplay="true"
          ref="audio"></audio>
@@ -100,13 +116,18 @@
       active: null,
       audioObject: null,
       videoObject: null,
-      pc: null
+      pc: null,
+      state: 'loading'
     },
     async mounted() {
       await this.getCameras()
       const streams = Object.keys(this.streams)
       if (streams.length > 0) {
-        await this.connect(streams[0])
+        if (location.hash) {
+          await this.connect(location.hash.slice(1))
+        } else {
+          await this.connect(streams[0])
+        }
       }
     },
     methods: {
@@ -122,6 +143,7 @@
           this.pc.close()
         }
         this.active = name
+        location.hash = name
         this.pc = await this.setupConnection(name, event => {
           if (event.track.kind === 'video') {
             this.videoObject = event.streams[0]
@@ -176,8 +198,12 @@
         pc.ontrack = cb
         pc.onconnectionstatechange = e => {
           console.trace('connectionstatechange', pc.connectionState)
+          this.state = this.pc.connectionState
           if (pc.connectionState === 'connected') {
-            ws.close()
+            return ws.close()
+          }
+          if (pc.connectionState === 'failed') {
+            this.connect(this.active)
           }
         }
         pc.oniceconnectionstatechange = e => console.trace('iceconnectionstatechange', pc.iceConnectionState)
