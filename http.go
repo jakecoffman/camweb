@@ -145,19 +145,21 @@ func connect(c *gin.Context) {
 		}
 	}()
 
-	audioRtpSender, err := peerConnection.AddTrack(stream.AudioTrack)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	go func() {
-		rtcpBuf := make([]byte, 1500)
-		for {
-			if _, _, rtcpErr := audioRtpSender.Read(rtcpBuf); rtcpErr != nil {
-				return
-			}
+	if stream.AudioTrack != nil {
+		audioRtpSender, err := peerConnection.AddTrack(stream.AudioTrack)
+		if err != nil {
+			log.Println(err)
+			return
 		}
-	}()
+		go func() {
+			rtcpBuf := make([]byte, 1500)
+			for {
+				if _, _, rtcpErr := audioRtpSender.Read(rtcpBuf); rtcpErr != nil {
+					return
+				}
+			}
+		}()
+	}
 
 	offer := webrtc.SessionDescription{
 		Type: webrtc.SDPTypeOffer,

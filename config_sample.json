@@ -3,11 +3,8 @@
     "http_port": ":8083"
   },
   "streams": {
-    "demo1": {
-      "url": "rtsp://user:password@192.168.1.120"
-    },
-    "demo2": {
-      "url": "rtsp://user:password@192.168.1.122"
+    "demo": {
+      "url": "rtsp://wowzaec2demo.streamlock.net/vod/mp4:BigBuckBunny_115k.mov"
     }
   }
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/deepch/vdk/format/rtsp"
@@ -43,19 +44,36 @@ func stream(name, url string) {
 			continue
 		}
 
-		videoTrack, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", name+"_pion")
+		var codecNames strings.Builder
+		for _, c := range codecs {
+			codecNames.WriteString(c.Type().String())
+			codecNames.WriteString(" ")
+		}
+		log.Println("Connected to", name, codecNames.String())
+
+		videoTrack, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", name+"_video")
 		if err != nil {
 			log.Println("Failed to create video track", err)
 			return
 		}
 
 		var audioTrack *webrtc.TrackLocalStaticSample
-		if len(codecs) > 1 && (codecs[1].Type() == av.PCM_ALAW || codecs[1].Type() == av.PCM_MULAW) {
-			switch codecs[1].Type() {
+		if len(codecs) > 1 {
+			var codec av.CodecData
+			for _, c := range codecs {
+				if c.Type().IsAudio() {
+					codec = c
+					break
+				}
+			}
+
+			switch codec.Type() {
 			case av.PCM_ALAW:
-				audioTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMA}, "audio", name+"audio")
+				audioTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMA}, "audio", name+"_audio")
 			case av.PCM_MULAW:
-				audioTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMU}, "audio", name+"audio")
+				audioTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMU}, "audio", name+"_audio")
+				//case av.AAC:
+				//	audioTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: "audio/aac"}, "audio", name+"_audio")
 			}
 			if err != nil {
 				log.Println(err)
@@ -72,14 +90,14 @@ func stream(name, url string) {
 				log.Println("Failed reading packet on stream", name, err)
 				break
 			}
-			if pck.Idx == 0 && videoTrack != nil {
+			if codecs[pck.Idx].Type().IsVideo() {
 				if pck.IsKeyFrame {
 					// SPS and PPS may change
 					codecs, err = session.Streams()
 					if err != nil {
 						break
 					}
-					codec := codecs[0].(h264parser.CodecData)
+					codec := codecs[pck.Idx].(h264parser.CodecData)
 					var keyframePreamble bytes.Buffer
 					keyframePreamble.Write(annexbNALUStartCode)
 					keyframePreamble.Write(codec.SPS())
@@ -98,12 +116,12 @@ func stream(name, url string) {
 					break
 				}
 				videoPrevious = pck.Time
-			} else if pck.Idx == 1 && audioTrack != nil {
+			} else if codecs[pck.Idx].Type().IsAudio() && audioTrack != nil {
 				codecs, err = session.Streams()
 				if err != nil {
 					break
 				}
-				codec := codecs[1].(av.AudioCodecData)
+				codec := codecs[pck.Idx].(av.AudioCodecData)
 				duration, err := codec.PacketDuration(pck.Data)
 				if err != nil {
 					log.Println("Failed to get duration for audio:", err)
