@@ -93,7 +93,7 @@ func connect(c *gin.Context) {
 
 	stream, ok := config.Streams[payload.ID]
 	if !ok {
-		log.Println("stream not found")
+		log.Println("stream", payload.ID, "not found")
 		return
 	}
 
