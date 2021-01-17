@@ -14,3 +14,7 @@ Great for security or baby monitors.
 ## Credit
 
 Originally forked from https://github.com/deepch/RTSPtoWebRTC
+
+Changes from upstream:
+- Uses a websocket and trickle ICE, avoids STUN servers
+- More resilient to packet loss using NACK responses
