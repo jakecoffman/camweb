@@ -22,7 +22,7 @@
       nav {
           display: grid;
           grid-gap: .25rem;
-          grid-template-columns: repeat(4, 1fr);
+          grid-template-columns: repeat(5, 1fr);
           margin-top: .25rem;
           margin-bottom: .25rem;
       }
@@ -98,6 +98,9 @@
             @mouseup="control(active, 'stop', 'Down')">
       <i class="fas fa-arrow-down"></i>
     </button>
+    <button @click="say(active)" :class="{active: micStream}">
+      <i class="fas fa-microphone"></i>
+    </button>
   </nav>
   <section>
     <button @click="connect(name)" v-for="(info, name) of streams" :key="name" :class="{active: active === name}">
@@ -107,7 +110,7 @@
 </article>
 <script>
   // Comment this line to get debugging in console.
-  console.trace = () => {}
+  //console.trace = () => {}
 
   const app = new Vue({
     el: '#app',
@@ -116,8 +119,11 @@
       active: null,
       audioObject: null,
       videoObject: null,
+      /** @type {RTCPeerConnection} */
       pc: null,
-      state: 'loading'
+      state: 'loading',
+      /** @type {MediaStream} */
+      micStream: null
     },
     async mounted() {
       await this.getCameras()
@@ -166,41 +172,68 @@
           alert(await r.json())
         }
       },
+      async say() {
+        if (this.micStream) {
+          this.micStream.getAudioTracks().forEach(track => track.stop())
+          this.micStream = null
+          return
+        }
+        if (!this.pc || this.pc.connectionState !== 'connected') {
+          return alert("No peer connected")
+        }
+        this.micStream = await navigator.mediaDevices.getUserMedia({audio: true})
+        this.micStream.getTracks().forEach(track => this.pc.addTrack(track, this.micStream));
+        const transceiver = this.pc.getTransceivers().find(t => t.sender && t.sender.track === this.micStream.getAudioTracks()[0]);
+        const {codecs} = RTCRtpSender.getCapabilities('audio');
+        const selectedCodecIndex = codecs.findIndex(c => c.mimeType === 'audio/PCMA');
+        console.log("Requesting", codecs[selectedCodecIndex])
+        transceiver.setCodecPreferences([codecs[selectedCodecIndex]]);
+      },
       async setupConnection(id, cb) {
-        const ws = await new Promise(function (resolve, reject) {
-          const ws = new WebSocket(`ws://${location.host}/ws`)
-          ws.onopen = function () {
-            resolve(ws)
-          }
-          ws.onerror = function (err) {
-            reject(err)
-          }
-        })
-        console.trace("Websocket connected")
+        let ws
 
         const pc = new RTCPeerConnection()
         pc.onnegotiationneeded = async () => {
-          console.trace('negotiationneeded -- sending offer')
+          if (!ws) {
+            ws = await new Promise(function (resolve, reject) {
+              const ws = new WebSocket(`ws://${location.host}/ws`)
+              ws.onopen = function () {
+                resolve(ws)
+              }
+              ws.onerror = function (err) {
+                reject(err)
+              }
+            })
+            ws.onmessage = e => {
+              const msg = JSON.parse(e.data)
+              if (msg.sdp) {
+                console.trace("Got answer", msg.sdp)
+                pc.setRemoteDescription(new RTCSessionDescription({
+                  type: 'answer',
+                  sdp: msg.sdp
+                }))
+              } else if (msg.candidate) {
+                console.trace("Got remote ICE candidate", msg.candidate)
+                pc.addIceCandidate(msg)
+              } else {
+                console.trace("Unknown Websocket Message", msg)
+              }
+            }
+          }
+
           let offer = await pc.createOffer()
           await pc.setLocalDescription(offer)
-          ws.send(JSON.stringify({
-            id,
-            sdp: pc.localDescription.sdp
-          }))
-
-          const iceTransport = pc.getSenders()[0].transport.iceTransport
-
-          iceTransport.onselectedcandidatepairchange = function (event) {
-            const pair = iceTransport.getSelectedCandidatePair()
-            console.trace('selectedcandidatepairchange -- local:', pair.local.type, pair.local.protocol, pair.local.port, 'remote:', pair.remote.type, pair.remote.protocol, pair.remote.port)
-          }
+          console.trace('negotiationneeded -- sending offer', offer, pc.localDescription.sdp)
+          ws.send(JSON.stringify({connectionRequest: {id, sdp: pc.localDescription.sdp}}))
         }
         pc.ontrack = cb
         pc.onconnectionstatechange = e => {
           console.trace('connectionstatechange', pc.connectionState)
           this.state = this.pc.connectionState
           if (pc.connectionState === 'connected') {
-            return ws.close()
+            // ws.close()
+            // ws = null
+            return
           }
           if (pc.connectionState === 'failed') {
             this.connect(this.active)
@@ -213,7 +246,7 @@
           if (e.candidate == null) {
             return
           }
-          ws.send(JSON.stringify(e.candidate.toJSON()))
+          ws.send(JSON.stringify({candidate: e.candidate.toJSON()}))
         }
         pc.onicecandidateerror = e => console.trace('icecandidateerror', e)
         pc.onsignalingstatechange = e => console.trace('signalingstatechange', e)
@@ -225,22 +258,6 @@
         pc.addTransceiver('video', {
           direction: 'sendrecv' // must use sendrecv so nacks work
         })
-
-        ws.onmessage = e => {
-          const msg = JSON.parse(e.data)
-          if (msg.sdp) {
-            console.trace("Got answer")
-            pc.setRemoteDescription(new RTCSessionDescription({
-              type: 'answer',
-              sdp: msg.sdp
-            }))
-          } else if (msg.candidate) {
-            console.trace("Got remote ICE candidate", msg.candidate)
-            pc.addIceCandidate(msg)
-          } else {
-            console.trace("Unknown Websocket Message", msg)
-          }
-        }
 
         return pc
       }

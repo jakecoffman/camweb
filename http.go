@@ -1,6 +1,7 @@
 package camweb
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"sync"
+	"time"
 )
 
 var upgrader = websocket.Upgrader{
@@ -80,117 +82,153 @@ func connect(c *gin.Context) {
 	}
 
 	type Payload struct {
-		ID  string `json:"id"`
-		SDP string `json:"sdp"`
-	}
-	var payload Payload
-	if err = ws.ReadJSON(&payload); err != nil {
-		log.Println(err)
-		return
+		ConnectRequest *struct {
+			ID  string `json:"id"`
+			SDP string `json:"sdp"`
+		} `json:"connectionRequest"`
+		Candidate *webrtc.ICECandidateInit `json:"candidate"`
 	}
 
-	stream, ok := config.Streams[payload.ID]
-	if !ok {
-		log.Println("stream", payload.ID, "not found")
-		return
-	}
-
-	mediaEngine := &webrtc.MediaEngine{}
-	if err = mediaEngine.RegisterDefaultCodecs(); err != nil {
-		log.Println("RegisterDefaultCodecs error", err)
-		return
-	}
-	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine))
-
-	peerConnection, err := api.NewPeerConnection(webrtc.Configuration{})
-	if err != nil {
-		log.Println("NewPeerConnection error", err)
-		return
-	}
-
-	var wsWriteLock sync.Mutex
-	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		if candidate == nil {
+	var peerConnection *webrtc.PeerConnection
+	for {
+		var payload Payload
+		if err = ws.ReadJSON(&payload); err != nil {
 			return
 		}
-		wsWriteLock.Lock()
-		if err := ws.WriteJSON(candidate.ToJSON()); err != nil {
-			log.Println("Failed sending ICE candidate", err)
-		}
-		wsWriteLock.Unlock()
-	})
-
-	rtpSender, err := peerConnection.AddTrack(stream.VideoTrack)
-	if err != nil {
-		log.Println("AddTrack error", err)
-		return
-	}
-
-	// Read incoming RTCP packets
-	// Before these packets are returned they are processed by interceptors. For things
-	// like NACK this needs to be called.
-	go func() {
-		rtcpBuf := make([]byte, 1500)
-		for {
-			if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
+		if payload.Candidate != nil {
+			if err = peerConnection.AddICECandidate(*payload.Candidate); err != nil {
+				log.Println("Failed adding ICE Candidate", err, payload.Candidate)
 				return
 			}
-		}
-	}()
+		} else if payload.ConnectRequest != nil {
+			if err = ws.ReadJSON(&payload); err != nil {
+				log.Println(err)
+				return
+			}
 
-	if stream.AudioTrack != nil {
-		audioRtpSender, err := peerConnection.AddTrack(stream.AudioTrack)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		go func() {
-			rtcpBuf := make([]byte, 1500)
-			for {
-				if _, _, rtcpErr := audioRtpSender.Read(rtcpBuf); rtcpErr != nil {
+			stream, ok := config.Streams[payload.ConnectRequest.ID]
+			if !ok {
+				log.Println("stream", payload.ConnectRequest.ID, "not found")
+				return
+			}
+
+			mediaEngine := &webrtc.MediaEngine{}
+			if err = mediaEngine.RegisterDefaultCodecs(); err != nil {
+				log.Println("RegisterDefaultCodecs error", err)
+				return
+			}
+			api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine))
+
+			if peerConnection == nil {
+				peerConnection, err = api.NewPeerConnection(webrtc.Configuration{})
+				if err != nil {
+					log.Println("NewPeerConnection error", err)
 					return
 				}
 			}
-		}()
-	}
 
-	offer := webrtc.SessionDescription{
-		Type: webrtc.SDPTypeOffer,
-		SDP:  payload.SDP,
-	}
-	if err := peerConnection.SetRemoteDescription(offer); err != nil {
-		log.Println("SetRemoteDescription error", err, offer.SDP)
-		return
-	}
-	answer, err := peerConnection.CreateAnswer(nil)
-	if err != nil {
-		log.Println("CreateAnswer error", err)
-		return
-	}
+			var wsWriteLock sync.Mutex
+			peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+				if candidate == nil {
+					return
+				}
+				wsWriteLock.Lock()
+				if err := ws.WriteJSON(candidate.ToJSON()); err != nil {
+					log.Println("Failed sending ICE candidate", err)
+				}
+				wsWriteLock.Unlock()
+			})
 
-	if err = peerConnection.SetLocalDescription(answer); err != nil {
-		log.Println("SetLocalDescription error", err)
-		return
-	}
-
-	go func() {
-		for {
-			var candidate webrtc.ICECandidateInit
-			if err = ws.ReadJSON(&candidate); err != nil {
+			if stream.VideoTrack == nil {
+				log.Println("Error: VideoTrack not setup")
 				return
 			}
-			if err = peerConnection.AddICECandidate(candidate); err != nil {
-				log.Println("Failed adding ICE Candidate", err, candidate)
+
+			rtpSender, err := peerConnection.AddTrack(stream.VideoTrack)
+			if err != nil {
+				log.Println("AddTrack error", err)
 				return
 			}
+
+			// Read incoming RTCP packets
+			// Before these packets are returned they are processed by interceptors. For things
+			// like NACK this needs to be called.
+			go func() {
+				rtcpBuf := make([]byte, 1500)
+				for {
+					if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
+						return
+					}
+				}
+			}()
+
+			if stream.AudioTrack != nil {
+				audioRtpSender, err := peerConnection.AddTrack(stream.AudioTrack)
+				if err != nil {
+					log.Println(err)
+					return
+				}
+				go func() {
+					rtcpBuf := make([]byte, 1500)
+					for {
+						if _, _, rtcpErr := audioRtpSender.Read(rtcpBuf); rtcpErr != nil {
+							return
+						}
+					}
+				}()
+			}
+
+			offer := webrtc.SessionDescription{
+				Type: webrtc.SDPTypeOffer,
+				SDP:  payload.ConnectRequest.SDP,
+			}
+			if err := peerConnection.SetRemoteDescription(offer); err != nil {
+				log.Println("SetRemoteDescription error", err, offer.SDP)
+				return
+			}
+			answer, err := peerConnection.CreateAnswer(nil)
+			if err != nil {
+				log.Println("CreateAnswer error", err)
+				return
+			}
+
+			if err = peerConnection.SetLocalDescription(answer); err != nil {
+				log.Println("SetLocalDescription error", err)
+				return
+			}
+
+			wsWriteLock.Lock()
+			if err = ws.WriteJSON(map[string]string{
+				"sdp": peerConnection.LocalDescription().SDP,
+			}); err != nil {
+				log.Println("Failed sending SDP", err)
+			}
+			wsWriteLock.Unlock()
+
+			// remote audio track for voice
+			peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+				log.Println("Got audio track", track.Codec().MimeType) // this says opus though I requested PCMA
+
+				var voiceData bytes.Buffer
+				go func() {
+					time.Sleep(5 * time.Second)
+					log.Println("Sending", voiceData.Len())
+					if err = say(stream.URL, voiceData); err != nil {
+						return
+					}
+					voiceData.Reset()
+				}()
+
+				for {
+					buf := make([]byte, 1500)
+					n, _, err := track.Read(buf)
+					if err != nil {
+						log.Println(err)
+						return
+					}
+					voiceData.Write(buf[:n])
+				}
+			})
 		}
-	}()
-
-	wsWriteLock.Lock()
-	if err = ws.WriteJSON(map[string]string{
-		"sdp": peerConnection.LocalDescription().SDP,
-	}); err != nil {
-		log.Println("Failed sending SDP", err)
 	}
-	wsWriteLock.Unlock()
 }
