@@ -2,6 +2,7 @@ package camweb
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	dac "github.com/xinsnake/go-http-digest-auth-client"
 	"io/ioutil"
@@ -15,7 +16,7 @@ import (
 var cache = map[string]dac.DigestRequest{}
 var controlLock sync.Mutex
 
-func control(uri, cmd, arg string) error {
+func control(ctx context.Context, uri, cmd, arg string) error {
 	controlLock.Lock()
 	defer controlLock.Unlock()
 
@@ -31,14 +32,13 @@ func control(uri, cmd, arg string) error {
 	pass, _ := u.User.Password()
 	u.User = nil
 
-	dr, ok := cache[u.String()]
-	if ok {
-		dr.UpdateRequest(user, pass, "GET", u.String(), "")
-	} else {
-		dr = dac.NewRequest(user, pass, "GET", u.String(), "")
-		cache[u.String()] = dr
+	transport := dac.NewTransport(user, pass)
+	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	if err != nil {
+		log.Println(err)
+		return err
 	}
-	response, err := dr.Execute()
+	response, err := transport.RoundTrip(req)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -49,7 +49,7 @@ func control(uri, cmd, arg string) error {
 	return nil
 }
 
-func say(uri string, voiceData bytes.Buffer) error {
+func say(ctx context.Context, uri string, voiceData bytes.Buffer) error {
 	controlLock.Lock()
 	defer controlLock.Unlock()
 
@@ -66,12 +66,13 @@ func say(uri string, voiceData bytes.Buffer) error {
 	u.User = nil
 
 	transport := dac.NewTransport(user, pass)
-	req, err := http.NewRequest("POST", uri, &voiceData)
+	req, err := http.NewRequestWithContext(ctx, "POST", uri, &voiceData)
 	if err != nil {
 		log.Println(err)
 		return err
 	}
-	req.Header.Add("Content-Type", "audio/G.711A")
+	req.Header["Content-Type"] = []string{"audio/G.711A"}
+	//req.Header["Content-Length"] = []string{"9999999"}
 
 	response, err := transport.RoundTrip(req)
 	if err != nil {
@@ -79,8 +80,10 @@ func say(uri string, voiceData bytes.Buffer) error {
 		return err
 	}
 	defer response.Body.Close()
+	log.Println("Done")
 
-	_, _ = ioutil.ReadAll(response.Body)
+	d, _ := ioutil.ReadAll(response.Body)
+	fmt.Println(string(d))
 	_ = response.Body.Close()
 	//log.Println("Amcrest response", response.StatusCode, string(b))
 	return nil

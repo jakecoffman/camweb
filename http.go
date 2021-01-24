@@ -2,6 +2,7 @@ package camweb
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -47,7 +48,7 @@ func ServeHTTP() {
 		}
 		if streams, ok := config.Streams[c.Param("id")]; ok {
 			url := streams.URL
-			if err := control(url, cmd.Cmd, cmd.Dir); err != nil {
+			if err := control(c, url, cmd.Cmd, cmd.Dir); err != nil {
 				c.AbortWithStatusJSON(500, err.Error())
 				return
 			}
@@ -113,8 +114,8 @@ func connect(c *gin.Context) {
 			}
 
 			mediaEngine := &webrtc.MediaEngine{}
-			if err = mediaEngine.RegisterDefaultCodecs(); err != nil {
-				log.Println("RegisterDefaultCodecs error", err)
+			if err = RegisterCodecs(mediaEngine); err != nil {
+				log.Println("RegisterCodecs error", err)
 				return
 			}
 			api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine))
@@ -208,12 +209,17 @@ func connect(c *gin.Context) {
 			// remote audio track for voice
 			peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 				log.Println("Got audio track", track.Codec().MimeType) // this says opus though I requested PCMA
+				if track.Codec().MimeType != "audio/PCMA" {
+					return
+				}
 
 				var voiceData bytes.Buffer
 				go func() {
 					time.Sleep(5 * time.Second)
 					log.Println("Sending", voiceData.Len())
-					if err = say(stream.URL, voiceData); err != nil {
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					if err = say(ctx, stream.URL, voiceData); err != nil {
 						return
 					}
 					voiceData.Reset()
@@ -231,4 +237,129 @@ func connect(c *gin.Context) {
 			})
 		}
 	}
+}
+
+// RegisterCodecs forces PCMA audio, the rest is default
+func RegisterCodecs(m *webrtc.MediaEngine) error {
+	for _, codec := range []webrtc.RTPCodecParameters{
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMA, ClockRate: 8000},
+			PayloadType:        8,
+		},
+	} {
+		if err := m.RegisterCodec(codec, webrtc.RTPCodecTypeAudio); err != nil {
+			return err
+		}
+	}
+
+	// Default Pion Audio Header Extensions
+	for _, extension := range []string{
+		"urn:ietf:params:rtp-hdrext:sdes:mid",
+		"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id",
+		"urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id",
+	} {
+		if err := m.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: extension}, webrtc.RTPCodecTypeAudio); err != nil {
+			return err
+		}
+	}
+
+	videoRTCPFeedback := []webrtc.RTCPFeedback{{"goog-remb", ""}, {"ccm", "fir"}, {"nack", ""}, {"nack", "pli"}}
+	for _, codec := range []webrtc.RTPCodecParameters{
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90000, RTCPFeedback: videoRTCPFeedback},
+			PayloadType:        96,
+		},
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "video/rtx", ClockRate: 90000, SDPFmtpLine: "apt=96"},
+			PayloadType:        97,
+		},
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP9, ClockRate: 90000, SDPFmtpLine: "profile-id=0", RTCPFeedback: videoRTCPFeedback},
+			PayloadType:        98,
+		},
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "video/rtx", ClockRate: 90000, SDPFmtpLine: "apt=98"},
+			PayloadType:        99,
+		},
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP9, ClockRate: 90000, SDPFmtpLine: "profile-id=1", RTCPFeedback: videoRTCPFeedback},
+			PayloadType:        100,
+		},
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "video/rtx", ClockRate: 90000, SDPFmtpLine: "apt=100"},
+			PayloadType:        101,
+		},
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: 90000, SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f", RTCPFeedback: videoRTCPFeedback},
+			PayloadType:        102,
+		},
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "video/rtx", ClockRate: 90000, SDPFmtpLine: "apt=102"},
+			PayloadType:        121,
+		},
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: 90000, SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42001f", RTCPFeedback: videoRTCPFeedback},
+			PayloadType:        127,
+		},
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "video/rtx", ClockRate: 90000, SDPFmtpLine: "apt=127"},
+			PayloadType:        120,
+		},
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: 90000, SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f", RTCPFeedback: videoRTCPFeedback},
+			PayloadType:        125,
+		},
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "video/rtx", ClockRate: 90000, SDPFmtpLine: "apt=125"},
+			PayloadType:        107,
+		},
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: 90000, SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42e01f", RTCPFeedback: videoRTCPFeedback},
+			PayloadType:        108,
+		},
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "video/rtx", ClockRate: 90000, SDPFmtpLine: "apt=108"},
+			PayloadType:        109,
+		},
+
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: 90000, SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42001f", RTCPFeedback: videoRTCPFeedback},
+			PayloadType:        127,
+		},
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "video/rtx", ClockRate: 90000, SDPFmtpLine: "apt=127"},
+			PayloadType:        120,
+		},
+
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: 90000, SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=640032", RTCPFeedback: videoRTCPFeedback},
+			PayloadType:        123,
+		},
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "video/rtx", ClockRate: 90000, SDPFmtpLine: "apt=123"},
+			PayloadType:        118,
+		},
+
+		{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "video/ulpfec", ClockRate: 90000},
+			PayloadType:        116,
+		},
+	} {
+		if err := m.RegisterCodec(codec, webrtc.RTPCodecTypeVideo); err != nil {
+			return err
+		}
+	}
+
+	// Default Pion Video Header Extensions
+	for _, extension := range []string{
+		"urn:ietf:params:rtp-hdrext:sdes:mid",
+		"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id",
+		"urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id",
+	} {
+		if err := m.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: extension}, webrtc.RTPCodecTypeVideo); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
