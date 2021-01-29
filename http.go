@@ -235,6 +235,18 @@ func connect(c *gin.Context) {
 					voiceData.Write(buf[:n])
 				}
 			})
+
+			peerConnection.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
+				if state == webrtc.ICEConnectionStateDisconnected {
+					peerConnection.Close()
+				}
+			})
+
+			peerConnection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+				if state == webrtc.PeerConnectionStateDisconnected {
+					peerConnection.Close()
+				}
+			})
 		}
 	}
 }
