@@ -238,12 +238,13 @@ func connect(c *gin.Context) {
 
 			peerConnection.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
 				if state == webrtc.ICEConnectionStateDisconnected {
-					peerConnection.Close()
+					log.Println("ICE disconnected")
 				}
 			})
 
 			peerConnection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 				if state == webrtc.PeerConnectionStateDisconnected {
+					log.Println("disconnected")
 					peerConnection.Close()
 				}
 			})
