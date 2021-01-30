@@ -101,12 +101,9 @@ func connect(c *gin.Context) {
 				log.Println("Failed adding ICE Candidate", err, payload.Candidate)
 				return
 			}
-		} else if payload.ConnectRequest != nil {
-			if err = ws.ReadJSON(&payload); err != nil {
-				log.Println(err)
-				return
-			}
-
+			continue
+		}
+		if payload.ConnectRequest != nil {
 			stream, ok := config.Streams[payload.ConnectRequest.ID]
 			if !ok {
 				log.Println("stream", payload.ConnectRequest.ID, "not found")
@@ -126,6 +123,18 @@ func connect(c *gin.Context) {
 					log.Println("NewPeerConnection error", err)
 					return
 				}
+				peerConnection.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
+					if state == webrtc.ICEConnectionStateDisconnected {
+						log.Println("ICE disconnected")
+					}
+				})
+
+				peerConnection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+					if state == webrtc.PeerConnectionStateDisconnected {
+						log.Println("disconnected")
+						peerConnection.Close()
+					}
+				})
 			}
 
 			var wsWriteLock sync.Mutex
@@ -233,19 +242,6 @@ func connect(c *gin.Context) {
 						return
 					}
 					voiceData.Write(buf[:n])
-				}
-			})
-
-			peerConnection.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
-				if state == webrtc.ICEConnectionStateDisconnected {
-					log.Println("ICE disconnected")
-				}
-			})
-
-			peerConnection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-				if state == webrtc.PeerConnectionStateDisconnected {
-					log.Println("disconnected")
-					peerConnection.Close()
 				}
 			})
 		}
